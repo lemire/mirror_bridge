@@ -1,0 +1,8 @@
+.git
+.gitignore
+*.md
+build
+*.o
+*.so
+__pycache__
+*.pyc

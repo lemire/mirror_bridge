@@ -1,0 +1,39 @@
+# Build artifacts
+build/
+*.o
+*.so
+*.dylib
+*.dll
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+*.egg
+
+# Compiler intermediates
+*.a
+*.lib
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Hash database
+class_hashes.db
+
+# Temporary files
+*.tmp
+.*.tmp
