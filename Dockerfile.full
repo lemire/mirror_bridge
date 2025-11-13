@@ -25,7 +25,7 @@ WORKDIR /opt/clang-p2996/build
 RUN cmake -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_PROJECTS="clang" \
-    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
+    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
     -DLIBCXX_ENABLE_REFLECTION=ON \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
     ../llvm && \
