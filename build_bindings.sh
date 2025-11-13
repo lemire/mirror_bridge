@@ -120,6 +120,29 @@ compile_all_bindings() {
     local failed=0
 
     echo "Scanning for binding files in: $bindings_dir"
+
+    # Check if directory exists
+    if [ ! -d "$bindings_dir" ]; then
+        echo "Error: Directory '$bindings_dir' does not exist"
+        return 1
+    fi
+
+    # Count .cpp files
+    local cpp_count=$(find "$bindings_dir" -maxdepth 1 -name "*.cpp" 2>/dev/null | wc -l)
+
+    if [ "$cpp_count" -eq 0 ]; then
+        echo ""
+        echo "⚠️  No .cpp files found in '$bindings_dir'"
+        echo ""
+        echo "Hint: Run this script from the tests directory or provide a path:"
+        echo "  cd tests && ../build_bindings.sh"
+        echo "  OR"
+        echo "  ./build_bindings.sh tests"
+        echo ""
+        return 1
+    fi
+
+    echo "Found $cpp_count .cpp file(s)"
     echo ""
 
     # Find all .cpp files that contain MIRROR_BRIDGE_MODULE
