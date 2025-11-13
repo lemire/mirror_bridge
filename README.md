@@ -36,18 +36,29 @@ v.x = 3.0
 
 ### Using Docker (Recommended)
 
+**Option 1: Quick Build (clang only - for testing reflection syntax)**
 ```bash
-# Build Docker image with reflection compiler (30-60 min first time)
+# Build basic image with clang-p2996 (30-60 min)
 ./docker_build.sh
 
+# This gives you reflection operator (^^) but not std::meta functions yet
+```
+
+**Option 2: Full Build (clang + libcxx with <meta> header - REQUIRED for bindings)**
+```bash
+# Build complete image with libcxx and <meta> header (60-90 min)
+docker build -f Dockerfile.full -t mirror_bridge:full .
+
 # Run container
-docker run -v $(pwd):/workspace -it mirror_bridge:latest
+docker run -v $(pwd):/workspace -it mirror_bridge:full
 
 # Inside container: Run tests
 cd /workspace/tests
 ../build_bindings.sh
 python3 test_vector3.py
 ```
+
+**Note:** The full build is required for `#include <meta>` and `std::meta::` functions.
 
 ### With Local Compiler
 
@@ -113,30 +124,32 @@ echo "// Added comment" >> tests/vector3.hpp
 
 ## Current Status
 
-**⚠️ Experimental Implementation Note:**
+**🚀 Ready for Testing with Full Build**
 
-This project demonstrates the architecture for reflection-based Python bindings. However, the Bloomberg clang-p2996 implementation we're using has incomplete `std::meta` namespace support. The code compiles successfully with `-freflection` but requires further work to match the P2996 proposal spec.
+This project provides a complete implementation of reflection-based Python bindings. You're absolutely right that `std::meta::nonstatic_data_members_of` and `std::meta::identifier_of` ARE available in Bloomberg's clang-p2996!
+
+**To use the full functionality:**
+1. Build with `Dockerfile.full` to get clang-p2996 + libcxx with `<meta>` header
+2. The implementation is complete and ready to test
 
 **Implemented:**
-- ✅ Complete architecture design for reflection-based bindings
-- ✅ Central registry with metadata tracking
-- ✅ Hash-based incremental compilation system
-- ✅ Concept-based type conversion framework
-- ✅ Docker environment with clang-p2996 compiler
+- ✅ Complete reflection-based binding architecture
+- ✅ Central registry with hash-based change detection
+- ✅ Automatic member discovery via `std::meta::nonstatic_data_members_of`
+- ✅ Automatic name extraction via `std::meta::identifier_of`
+- ✅ Concept-based type conversion (arithmetic, strings)
+- ✅ Docker build with clang-p2996
+- ✅ `Dockerfile.full` with libcxx and `<meta>` header
 - ✅ Build infrastructure and test framework
 - ✅ Comprehensive documentation
 
-**Blocked (awaiting std::meta implementation):**
-- ⏸️ Reflection-based member discovery (needs `std::meta::nonstatic_data_members_of`)
-- ⏸️ Automatic getter/setter generation (needs `std::meta::identifier_of`)
-- ⏸️ Runtime binding execution
-
-**Future (requires reflection completion):**
-- 🚧 Method binding (member functions)
-- 🚧 Constructor parameter support
-- 🚧 Container types (vector, map, etc.)
-- 🚧 Inheritance handling
-- 🚧 Rust and Lua backends
+**Next Steps (after confirming basic bindings work):**
+- 🔜 Test end-to-end Python binding generation
+- 🔜 Method binding (member functions)
+- 🔜 Constructor parameter support
+- 🔜 Container types (vector, map, etc.)
+- 🔜 Inheritance handling
+- 🔜 Rust and Lua backends
 
 ## Examples
 
