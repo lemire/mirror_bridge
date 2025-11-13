@@ -34,31 +34,45 @@ v.x = 3.0
 
 ## Quick Start
 
-### Using Docker (Recommended)
+### Using Docker (Recommended - Persistent Container)
 
-**Option 1: Quick Build (clang only - for testing reflection syntax)**
+**One-command setup with persistent container:**
 ```bash
-# Build basic image with clang-p2996 (30-60 min)
+# First time: builds image + creates persistent container (~30-60 min)
+./start_dev_container.sh
+
+# Inside container: test the setup
+cd tests && ../build_bindings.sh && python3 test_vector3.py
+```
+
+**Every subsequent session:**
+```bash
+# Just start the script - attaches to existing container instantly!
+./start_dev_container.sh
+
+# All your previous work is preserved:
+# - Compiled bindings
+# - Installed packages
+# - Shell history
+```
+
+**See [DEVELOPMENT.md](DEVELOPMENT.md) for:**
+- Complete persistent container guide
+- How to attach multiple terminals
+- IDE integration (VS Code, CLion)
+- Troubleshooting tips
+
+### Alternative: Full Build from Scratch
+
+If you want to build everything from scratch (not recommended for development):
+
+```bash
+# Option 1: Quick build (clang only - ~30-60 min)
 ./docker_build.sh
 
-# This gives you reflection operator (^^) but not std::meta functions yet
-```
-
-**Option 2: Full Build (clang + libcxx with <meta> header - REQUIRED for bindings)**
-```bash
-# Build complete image with libcxx and <meta> header (60-90 min)
+# Option 2: Full build with libcxx (~60-90 min)
 docker build -f Dockerfile.full -t mirror_bridge:full .
-
-# Run container
-docker run -v $(pwd):/workspace -it mirror_bridge:full
-
-# Inside container: Run tests
-cd /workspace/tests
-../build_bindings.sh
-python3 test_vector3.py
 ```
-
-**Note:** The full build is required for `#include <meta>` and `std::meta::` functions.
 
 ### With Local Compiler
 

@@ -33,7 +33,11 @@ Makefile
 
 # Hash database
 class_hashes.db
+*.db
 
 # Temporary files
 *.tmp
 .*.tmp
+
+# Docker volumes (if using docker-compose)
+.docker-volumes/
