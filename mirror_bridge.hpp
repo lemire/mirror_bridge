@@ -162,15 +162,16 @@ private:
 
 // Generate a type signature from reflection metadata
 // This signature is used for hash-based change detection
+// Includes both data members and member function signatures
 template<typename T>
 consteval std::string generate_type_signature() {
     std::string sig = std::meta::identifier_of(^^T);
     sig += "{";
 
-    // Iterate over all non-static data members using reflection
-    constexpr auto members = std::meta::nonstatic_data_members_of(^^T);
-    for (std::size_t i = 0; i < members.size(); ++i) {
-        constexpr auto member = members[i];
+    // Data members section
+    constexpr auto data_members = std::meta::nonstatic_data_members_of(^^T);
+    for (std::size_t i = 0; i < data_members.size(); ++i) {
+        constexpr auto member = data_members[i];
         constexpr auto member_name = std::meta::identifier_of(member);
         constexpr auto member_type = std::meta::type_of(member);
 
@@ -178,6 +179,27 @@ consteval std::string generate_type_signature() {
         sig += std::meta::identifier_of(member_type);
         sig += " ";
         sig += member_name;
+    }
+
+    // Member functions section - includes all methods to detect signature changes
+    sig += "|methods:";
+    constexpr auto all_members = std::meta::members_of(^^T);
+    bool first_method = true;
+    for (std::size_t i = 0; i < all_members.size(); ++i) {
+        constexpr auto member = all_members[i];
+        // Filter for member functions (excludes data members, constructors, destructors)
+        if constexpr (std::meta::is_function(member) &&
+                     !std::meta::is_constructor(member) &&
+                     !std::meta::is_destructor(member)) {
+            if (!first_method) sig += ",";
+            first_method = false;
+
+            // Include function signature: return_type name(params) cv-qualifiers
+            constexpr auto func_type = std::meta::type_of(member);
+            sig += std::meta::identifier_of(func_type);
+            sig += " ";
+            sig += std::meta::identifier_of(member);
+        }
     }
 
     sig += "}";
