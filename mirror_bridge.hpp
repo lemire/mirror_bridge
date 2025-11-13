@@ -2,8 +2,10 @@
 
 // Mirror Bridge - Single-header C++ to Python binding generator using C++26 reflection
 // Leverages P2996 reflection proposal for automatic, zero-overhead foreign function interfaces
+//
+// Compile with: -std=c++2c -freflection -freflection-latest
+// Reflection is compiler-built-in (no header needed) when using Bloomberg's clang-p2996
 
-#include <meta>
 #include <Python.h>
 #include <string>
 #include <string_view>
