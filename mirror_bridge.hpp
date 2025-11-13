@@ -13,33 +13,59 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <array>
 #include <type_traits>
 #include <concepts>
 #include <functional>
 #include <memory>
 #include <unordered_map>
+#include <ranges>
 
 namespace mirror_bridge {
 
 // ============================================================================
-// Type Traits and Concepts
+// Type Traits and Concepts (inspired by simdjson's approach)
 // ============================================================================
+
+// Forward declarations for nested type support
+template<typename T>
+PyObject* to_python(const T& value);
+
+template<typename T>
+bool from_python(PyObject* obj, T& out);
 
 // Concept to identify arithmetic types (int, float, double, etc.)
 template<typename T>
-concept Arithmetic = std::is_arithmetic_v<T>;
+concept Arithmetic = std::is_arithmetic_v<std::remove_cvref_t<T>>;
 
-// Concept to identify string-like types
+// Concept to identify string-like types (std::string, std::string_view, const char*, etc.)
+// Using simdjson's pattern: remove cv-qualifiers and references before checking
 template<typename T>
-concept StringLike = std::is_convertible_v<T, std::string_view> ||
-                      std::is_same_v<T, std::string> ||
-                      std::is_same_v<T, const char*>;
+concept StringLike =
+    std::is_same_v<std::remove_cvref_t<T>, std::string> ||
+    std::is_same_v<std::remove_cvref_t<T>, std::string_view> ||
+    std::is_same_v<std::remove_cvref_t<T>, const char*> ||
+    std::is_same_v<std::remove_cvref_t<T>, char*>;
 
-// Concept for types that can be bound to Python
+// Concept to identify C++ standard containers (vector, array, list, etc.)
+// Following simdjson: use ranges to detect containers, but exclude strings
 template<typename T>
-concept Bindable = std::is_class_v<T> && requires {
-    { std::meta::nonstatic_data_members_of(^^T) };
+concept Container =
+    std::ranges::input_range<std::remove_cvref_t<T>> &&
+    !StringLike<T> &&
+    requires(std::remove_cvref_t<T> c) {
+        typename std::remove_cvref_t<T>::value_type;
+    };
+
+// Concept for types that can be bound to Python (classes with reflectable members)
+template<typename T>
+concept Bindable = std::is_class_v<std::remove_cvref_t<T>> && requires {
+    { std::meta::nonstatic_data_members_of(^^std::remove_cvref_t<T>) };
 };
+
+// Concept for nested bindable classes (used as member types in other classes)
+template<typename T>
+concept NestedBindable = Bindable<T> && !StringLike<T> && !Container<T> && !Arithmetic<T>;
 
 // ============================================================================
 // Python Type Conversion Utilities
@@ -59,7 +85,10 @@ PyObject* to_python(const T& value) {
 
 template<StringLike T>
 PyObject* to_python(const T& value) {
-    if constexpr (std::is_same_v<T, std::string>) {
+    using BaseType = std::remove_cvref_t<T>;
+    if constexpr (std::is_same_v<BaseType, std::string>) {
+        return PyUnicode_FromStringAndSize(value.data(), value.size());
+    } else if constexpr (std::is_same_v<BaseType, std::string_view>) {
         return PyUnicode_FromStringAndSize(value.data(), value.size());
     } else {
         return PyUnicode_FromString(value);
@@ -92,6 +121,151 @@ inline bool from_python<std::string>(PyObject* obj, std::string& out) {
     if (!data) return false;
     out = std::string(data, size);
     return true;
+}
+
+template<>
+inline bool from_python<std::string_view>(PyObject* obj, std::string_view& out) {
+    // Note: string_view requires the underlying string to remain valid
+    // For Python->C++ conversion, we typically need to store strings, not views
+    // This is mainly useful for temporary conversions
+    if (!PyUnicode_Check(obj)) return false;
+    Py_ssize_t size;
+    const char* data = PyUnicode_AsUTF8AndSize(obj, &size);
+    if (!data) return false;
+    out = std::string_view(data, size);
+    return true;
+}
+
+// Convert C++ containers to Python lists
+// Recursively converts each element using to_python
+template<Container T>
+PyObject* to_python(const T& container) {
+    PyObject* list = PyList_New(container.size());
+    if (!list) return nullptr;
+
+    Py_ssize_t index = 0;
+    for (const auto& item : container) {
+        PyObject* py_item = to_python(item);
+        if (!py_item) {
+            Py_DECREF(list);
+            return nullptr;
+        }
+        PyList_SET_ITEM(list, index++, py_item);
+    }
+    return list;
+}
+
+// Convert Python lists to C++ containers
+// Supports any container with push_back (vector, list, deque) or insert (set, etc.)
+template<Container T>
+bool from_python(PyObject* obj, T& container) {
+    if (!PyList_Check(obj)) return false;
+
+    Py_ssize_t size = PyList_Size(obj);
+    using ValueType = typename std::remove_cvref_t<T>::value_type;
+
+    // Clear the container and reserve space if possible
+    container.clear();
+    if constexpr (requires { container.reserve(size); }) {
+        container.reserve(size);
+    }
+
+    for (Py_ssize_t i = 0; i < size; ++i) {
+        PyObject* py_item = PyList_GetItem(obj, i);  // Borrowed reference
+        ValueType cpp_item;
+        if (!from_python(py_item, cpp_item)) {
+            return false;
+        }
+
+        // Use push_back if available, otherwise use insert
+        if constexpr (requires { container.push_back(cpp_item); }) {
+            container.push_back(std::move(cpp_item));
+        } else if constexpr (requires { container.insert(cpp_item); }) {
+            container.insert(std::move(cpp_item));
+        } else {
+            // Fallback for other container types
+            static_assert(requires { container.push_back(cpp_item); },
+                         "Container must support push_back or insert");
+        }
+    }
+    return true;
+}
+
+// Convert nested bindable classes to Python dictionaries
+// Uses reflection to iterate over all members and create a dict
+template<NestedBindable T>
+PyObject* to_python(const T& obj) {
+    PyObject* dict = PyDict_New();
+    if (!dict) return nullptr;
+
+    constexpr auto members = std::meta::nonstatic_data_members_of(^^T);
+    bool success = true;
+
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        ([&] {
+            if (!success) return;
+
+            constexpr auto member = members[Is];
+            constexpr auto name = std::meta::identifier_of(member);
+
+            // Get the member value and convert it to Python
+            const auto& value = obj.[:member:];
+            PyObject* py_value = to_python(value);
+
+            if (!py_value || PyDict_SetItemString(dict, name, py_value) < 0) {
+                success = false;
+                Py_XDECREF(py_value);
+            } else {
+                Py_DECREF(py_value);  // Dict keeps its own reference
+            }
+        }(), ...);
+    }(std::make_index_sequence<members.size()>{});
+
+    if (!success) {
+        Py_DECREF(dict);
+        return nullptr;
+    }
+
+    return dict;
+}
+
+// Convert Python dictionaries to nested bindable classes
+// Uses reflection to match dict keys to member names
+template<NestedBindable T>
+bool from_python(PyObject* obj, T& out) {
+    if (!PyDict_Check(obj)) return false;
+
+    constexpr auto members = std::meta::nonstatic_data_members_of(^^T);
+    bool success = true;
+
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        ([&] {
+            if (!success) return;
+
+            constexpr auto member = members[Is];
+            constexpr auto name = std::meta::identifier_of(member);
+            using MemberType = typename std::meta::type_of(member);
+
+            // Get the value from the dict
+            PyObject* py_value = PyDict_GetItemString(obj, name);  // Borrowed reference
+            if (!py_value) {
+                // Member not found in dict - could use default value or fail
+                success = false;
+                return;
+            }
+
+            // Convert Python value to C++ type
+            MemberType cpp_value;
+            if (!from_python(py_value, cpp_value)) {
+                success = false;
+                return;
+            }
+
+            out.[:member:] = std::move(cpp_value);
+        }(), ...);
+    }(std::make_index_sequence<members.size()>{});
+
+    return success;
 }
 
 // ============================================================================
