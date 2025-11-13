@@ -161,10 +161,23 @@ private:
 // ============================================================================
 
 // Generate a type signature from reflection metadata
-// This signature is used for hash-based change detection
-// Includes both data members and member function signatures
+// This signature is used for hash-based change detection and includes:
+//   1. Data member names and types
+//   2. Member function signatures (name, return type, parameters, cv-qualifiers)
+//   3. Optional source file content hash
+//
+// Why file content hashing is needed:
+//   P2996 reflection can only inspect declarations and signatures, NOT implementations.
+//   If a method body changes but its signature stays the same, reflection cannot detect it.
+//   To catch implementation changes, the build system should compute a hash of the source
+//   file and pass it via -DFILE_CONTENT_HASH_<ClassName>="<hash>" to the compiler.
+//
+// Example usage in build script:
+//   FILE_HASH=$(sha256sum vector3.hpp | cut -d' ' -f1)
+//   clang++ -DFILE_CONTENT_HASH_Vector3=\"$FILE_HASH\" ...
+//
 template<typename T>
-consteval std::string generate_type_signature() {
+consteval std::string generate_type_signature(const char* file_hash = nullptr) {
     std::string sig = std::meta::identifier_of(^^T);
     sig += "{";
 
@@ -181,7 +194,8 @@ consteval std::string generate_type_signature() {
         sig += member_name;
     }
 
-    // Member functions section - includes all methods to detect signature changes
+    // Member functions section - detects when method signatures change
+    // (but NOT when only the implementation changes - see note above)
     sig += "|methods:";
     constexpr auto all_members = std::meta::members_of(^^T);
     bool first_method = true;
@@ -200,6 +214,13 @@ consteval std::string generate_type_signature() {
             sig += " ";
             sig += std::meta::identifier_of(member);
         }
+    }
+
+    // Include file content hash if provided by build system
+    // This catches implementation changes that reflection cannot detect
+    if (file_hash && file_hash[0] != '\0') {
+        sig += "|file_hash:";
+        sig += file_hash;
     }
 
     sig += "}";
@@ -316,10 +337,11 @@ consteval auto generate_getsetters(std::index_sequence<Indices...>) {
 }
 
 // Main binding function - generates Python type object for a C++ class
+// Optionally accepts a file content hash for implementation change detection
 template<Bindable T>
-PyTypeObject* bind_class(PyObject* module, const char* name) {
+PyTypeObject* bind_class(PyObject* module, const char* name, const char* file_hash = nullptr) {
     // Generate type signature for hash-based change detection
-    constexpr auto signature = generate_type_signature<T>();
+    constexpr auto signature = generate_type_signature<T>(file_hash);
 
     // Register class in the global registry
     Registry::instance().register_class(name, signature);
@@ -368,11 +390,19 @@ PyTypeObject* bind_class(PyObject* module, const char* name) {
 // ============================================================================
 
 // Register a class for Python binding
+// Optionally, the build system can define FILE_CONTENT_HASH_<ClassName> to include
+// implementation change detection. If not defined, only signature changes are detected.
+//
+// Example: clang++ -DFILE_CONTENT_HASH_Vector3=\"abc123...\" vector3_binding.cpp
 #define MIRROR_BRIDGE_REGISTER(ClassName) \
+    MIRROR_BRIDGE_REGISTER_WITH_HASH(ClassName, nullptr)
+
+// Register a class with an explicit file content hash
+#define MIRROR_BRIDGE_REGISTER_WITH_HASH(ClassName, FileHash) \
     namespace { \
         struct ClassName##_Registrar { \
             ClassName##_Registrar() { \
-                constexpr auto sig = mirror_bridge::generate_type_signature<ClassName>(); \
+                constexpr auto sig = mirror_bridge::generate_type_signature<ClassName>(FileHash); \
                 mirror_bridge::Registry::instance().register_class(#ClassName, sig); \
             } \
         }; \
