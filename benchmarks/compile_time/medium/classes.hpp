@@ -1,6 +1,7 @@
 // Medium benchmark: 10 interconnected classes (realistic project)
 #include <string>
 #include <vector>
+#include <cmath>
 
 // Base types
 struct Vector3D {
@@ -75,9 +76,10 @@ struct Light {
     Transform transform;
     Color color;
     double intensity;
-    enum Type { POINT, DIRECTIONAL, SPOT };
-    Type type;
-    Light() : intensity(1.0), type(POINT) {}
+    // Note: Simplified from enum to int for Mirror Bridge compatibility
+    // (enum support is a future enhancement)
+    int type;  // 0=POINT, 1=DIRECTIONAL, 2=SPOT
+    Light() : intensity(1.0), type(0) {}
     void set_intensity(double i);
 };
 

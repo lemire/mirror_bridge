@@ -68,10 +68,7 @@ PYBIND11_MODULE(medium_pb, m) {
         .def("look_at", &Camera::look_at)
         .def("get_forward", &Camera::get_forward);
 
-    py::enum_<Light::Type>(m, "LightType")
-        .value("POINT", Light::POINT)
-        .value("DIRECTIONAL", Light::DIRECTIONAL)
-        .value("SPOT", Light::SPOT);
+    // Note: Light::Type enum removed (simplified to int for fair comparison)
 
     py::class_<Light>(m, "Light")
         .def(py::init<>())

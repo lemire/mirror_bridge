@@ -1,41 +1,23 @@
 #!/bin/bash
-# Helper script to build benchmark Docker image and run benchmarks
+# Wrapper script to run benchmarks in Docker
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-IMAGE_NAME="mirror_bridge:benchmarks"
 
 echo "=========================================="
 echo "  Mirror Bridge Benchmark Runner"
 echo "=========================================="
 echo ""
-
-# Check if benchmark image exists
-if ! docker images | grep -q "mirror_bridge.*benchmarks"; then
-    echo "Benchmark Docker image not found. Building..."
-    echo ""
-    echo "This will take ~30-60 minutes (one-time setup)"
-    echo "Building clang with reflection support..."
-    echo ""
-
-    docker build -f Dockerfile.benchmarks -t "$IMAGE_NAME" .
-
-    echo ""
-    echo "✓ Benchmark image built successfully"
-    echo ""
-else
-    echo "✓ Benchmark image found"
-    echo ""
-fi
-
-# Run benchmarks
-echo "Running benchmarks inside Docker container..."
+echo "Installing benchmark dependencies and running benchmarks..."
 echo ""
 
-docker run --rm -v "$SCRIPT_DIR:/workspace" "$IMAGE_NAME" bash -c "
-    cd /workspace/benchmarks
-    ./run_all_benchmarks.sh
+# Use existing development image and install pybind11 on-the-fly
+docker run --rm -v "$SCRIPT_DIR:/workspace" mirror_bridge:full bash -c "
+    apt-get update -qq &&
+    apt-get install -y -qq pybind11-dev libboost-python-dev > /dev/null 2>&1 &&
+    cd /workspace &&
+    ./benchmarks/run_all_benchmarks.sh
 "
 
 echo ""

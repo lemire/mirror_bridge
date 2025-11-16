@@ -1,68 +1,19 @@
 # Quick Benchmark Setup Guide
 
-## The Problem
+## Running Benchmarks
 
-Building the benchmark Docker image from scratch takes **30-60 minutes** because it needs to compile clang-p2996 with reflection support from source. This is a one-time setup, but it's too slow for quick verification.
-
-## Solution: Use Existing Development Image
-
-If you already have `mirror_bridge:full` or similar development image with clang-p2996 installed, you can run benchmarks directly without rebuilding:
-
-### Option 1: Install Dependencies in Existing Image
+Use your existing development Docker image and install benchmark dependencies on-the-fly:
 
 ```bash
-# Run a container with the development image
-docker run -it --rm -v "$PWD:/workspace" mirror_bridge:full bash
-
-# Inside container, install pybind11
-apt-get update && apt-get install -y pybind11-dev
-
-# Run benchmarks
-cd /workspace/benchmarks
-./run_all_benchmarks.sh
+# One command - installs pybind11 and runs all benchmarks
+docker run --rm -v "$PWD:/workspace" mirror_bridge:full bash -c "
+    apt-get update -qq && apt-get install -y -qq pybind11-dev libboost-python-dev > /dev/null 2>&1 &&
+    cd /workspace &&
+    ./benchmarks/run_all_benchmarks.sh
+"
 ```
 
-### Option 2: Create Lightweight Benchmark Layer
-
-Create a `Dockerfile.benchmarks-fast` that extends your existing image:
-
-```dockerfile
-FROM mirror_bridge:full
-
-# Only install benchmark dependencies (takes ~30 seconds)
-RUN apt-get update && apt-get install -y \
-    pybind11-dev \
-    libboost-python-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /workspace
-```
-
-Build and run:
-
-```bash
-# Fast build (only installs pybind11, ~30 seconds)
-docker build -f Dockerfile.benchmarks-fast -t mirror_bridge:benchmarks-fast .
-
-# Run benchmarks
-docker run --rm -v "$PWD:/workspace" mirror_bridge:benchmarks-fast \
-    bash -c "cd /workspace && ./run_benchmarks.sh"
-```
-
-### Option 3: Build Full Benchmark Image (First Time)
-
-⏰ **Time: 30-60 minutes** (one-time setup)
-
-```bash
-# Start the build and let it run
-./run_benchmarks.sh
-
-# Or build manually
-docker build -f Dockerfile.benchmarks -t mirror_bridge:benchmarks .
-
-# Future runs are instant (image is cached)
-./run_benchmarks.sh
-```
+That's it! No separate Docker image needed.
 
 ## Expected Output
 
