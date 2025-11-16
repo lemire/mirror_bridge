@@ -164,17 +164,16 @@ def print_results(results_mb, results_pb, results_bp):
     print("\n" + "="*80)
     print(" Runtime Performance Benchmarks (lower is better)")
     print("="*80)
-    print(f"\n{'Benchmark':<20} {'Mirror Bridge':<15} {'pybind11':<15} {'Boost.Python':<15} {'vs pb11':<10}")
+    print(f"\n{'Benchmark':<20} {'Mirror Bridge':<15} {'pybind11':<15} {'vs pb11':<10}")
     print("-"*80)
 
     for name, key in benchmarks:
         mb = results_mb[key]
         pb = results_pb[key]
-        bp = results_bp[key]
         ratio = mb / pb
         marker = "✓" if ratio <= 1.1 else ("⚠" if ratio <= 1.5 else "✗")
 
-        print(f"{name:<20} {format_time(mb):<15} {format_time(pb):<15} {format_time(bp):<15} {ratio:.2f}x {marker}")
+        print(f"{name:<20} {format_time(mb):<15} {format_time(pb):<15} {ratio:.2f}x {marker}")
 
     print("\n" + "="*80)
     print("Legend: ✓ within 10%  |  ⚠ within 50%  |  ✗ slower than 50%")
@@ -196,7 +195,6 @@ if __name__ == '__main__':
         try:
             import bench_mb
             import bench_pb
-            import bench_bp
         except ImportError as e:
             print(f"Error: Failed to import benchmark modules: {e}")
             print("Please run the compile-time benchmarks first to build the modules.")
@@ -208,8 +206,8 @@ if __name__ == '__main__':
         print("Running pybind11 benchmarks...")
         results_pb = run_benchmarks('bench_pb', bench_pb.BenchmarkClass)
 
-        print("Running Boost.Python benchmarks...")
-        results_bp = run_benchmarks('bench_bp', bench_bp.BenchmarkClass)
+        print("Boost.Python skipped (incompatible with libc++)")
+        results_bp = {k: 0.0 for k in results_mb.keys()}  # Dummy results
 
         print_results(results_mb, results_pb, results_bp)
 

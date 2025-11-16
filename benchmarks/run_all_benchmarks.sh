@@ -60,7 +60,13 @@ measure_compile_time() {
 
 # Function to get file size in KB
 get_size_kb() {
-    stat -f%z "$1" 2>/dev/null | awk '{print int($1/1024)}' || stat -c%s "$1" 2>/dev/null | awk '{print int($1/1024)}'
+    if [ -f "$1" ]; then
+        # Try macOS stat first, then Linux stat
+        size=$(stat -f%z "$1" 2>/dev/null || stat -c%s "$1" 2>/dev/null || echo "0")
+        echo $((size / 1024))
+    else
+        echo "0"
+    fi
 }
 
 echo -e "${YELLOW}========================================${NC}"
@@ -85,14 +91,13 @@ size_pb=$(get_size_kb "$BUILD_DIR/simple_pb.so")
 echo -e "${GREEN}${time_pb}ms  (${size_pb} KB)${NC}"
 
 echo -n "  Boost.Python...   "
-time_bp=$(measure_compile_time "boost_python_binding.cpp" "$BUILD_DIR/simple_bp.so" "-I/usr/include/python3.10")
-size_bp=$(get_size_kb "$BUILD_DIR/simple_bp.so")
-echo -e "${GREEN}${time_bp}ms  (${size_bp} KB)${NC}"
+echo -e "${YELLOW}SKIPPED (incompatible with libc++)${NC}"
+time_bp="0"
+size_bp="0"
 
 echo ""
-ratio_mb_pb=$(awk "BEGIN {printf \"%.2f\", $time_mb/$time_pb}")
-echo -e "  Speedup: Mirror Bridge vs pybind11:     ${ratio_mb_pb}x"
-echo -e "  Speedup: Mirror Bridge vs Boost.Python: $(awk "BEGIN {printf \"%.2f\", $time_mb/$time_bp}")x"
+ratio_mb_pb=$(awk "BEGIN {printf \"%.2f\", $time_pb/$time_mb}")
+echo -e "  Speedup vs pybind11: ${ratio_mb_pb}x faster"
 echo ""
 
 # Medium benchmark
@@ -112,14 +117,13 @@ size_pb_med=$(get_size_kb "$BUILD_DIR/medium_pb.so")
 echo -e "${GREEN}${time_pb_med}ms  (${size_pb_med} KB)${NC}"
 
 echo -n "  Boost.Python...   "
-time_bp_med=$(measure_compile_time "boost_python_binding.cpp" "$BUILD_DIR/medium_bp.so" "-I/usr/include/python3.10")
-size_bp_med=$(get_size_kb "$BUILD_DIR/medium_bp.so")
-echo -e "${GREEN}${time_bp_med}ms  (${size_bp_med} KB)${NC}"
+echo -e "${YELLOW}SKIPPED (incompatible with libc++)${NC}"
+time_bp_med="0"
+size_bp_med="0"
 
 echo ""
-ratio_mb_pb_med=$(awk "BEGIN {printf \"%.2f\", $time_mb_med/$time_pb_med}")
-echo -e "  Speedup: Mirror Bridge vs pybind11:     ${ratio_mb_pb_med}x"
-echo -e "  Speedup: Mirror Bridge vs Boost.Python: $(awk "BEGIN {printf \"%.2f\", $time_mb_med/$time_bp_med}")x"
+ratio_mb_pb_med=$(awk "BEGIN {printf \"%.2f\", $time_pb_med/$time_mb_med}")
+echo -e "  Speedup vs pybind11: ${ratio_mb_pb_med}x faster"
 echo ""
 
 # Developer Experience metrics
@@ -163,13 +167,11 @@ clang++ -std=c++20 -stdlib=libc++ \
     $(python3-config --includes --ldflags) \
     pybind11_binding.cpp -o "$BUILD_DIR/bench_pb.so" 2>&1 | grep -v "mixture of designated" || true
 
-clang++ -std=c++20 -stdlib=libc++ \
-    -I/usr/include/python3.10 -fPIC -shared \
-    $(python3-config --includes --ldflags) \
-    -lboost_python310 \
-    boost_python_binding.cpp -o "$BUILD_DIR/bench_bp.so" 2>&1 | grep -v "mixture of designated" || true
+echo -e "${YELLOW}Boost.Python skipped (incompatible with libc++)${NC}"
+echo ""
 
 echo "Running runtime benchmarks (this may take a few minutes)..."
+export LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:$LD_LIBRARY_PATH
 python3 run_runtime_benchmarks.py run
 
 # Summary
