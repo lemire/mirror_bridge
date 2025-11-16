@@ -15,17 +15,17 @@ struct Calculator {
 };
 
 // 2. One command to bind everything:
-//    mirror_bridge_auto src/ --module math
+//    mirror_bridge_auto src/ --module cpp_calc
 ```
 
 ```python
 # 3. Use from Python - everything just works!
-import math
+import cpp_calc
 
-calc = math.Calculator(100.0)  # Constructors with parameters ✓
-calc.add(10)                   # Methods ✓
-calc.subtract(3)               # Returns: 107.0
-print(calc.value)              # Direct member access ✓
+calc = cpp_calc.Calculator(100.0)  # Constructors with parameters ✓
+calc.add(10)                       # Methods ✓
+calc.subtract(3)                   # Returns: 107.0
+print(calc.value)                  # Direct member access ✓
 ```
 
 **No manual binding code. No wrapper macros. Just pure C++26 reflection.** 🎉
@@ -152,13 +152,13 @@ struct Vector3 {
 
 ```bash
 # One command binds BOTH classes
-mirror_bridge_auto src/ --module math
+mirror_bridge_auto src/ --module mylib
 ```
 
 ```python
-import math
-calc = math.Calculator()
-vec = math.Vector3()
+import mylib
+calc = mylib.Calculator()
+vec = mylib.Vector3()
 ```
 
 See [`examples/option2/`](examples/option2) for full example.
