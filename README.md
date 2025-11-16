@@ -419,13 +419,26 @@ See [CONTRIBUTING.md](CONTRIBUTING.md#architecture-overview) for technical detai
 - ✅ Method overloading via name mangling
 - ✅ Smart pointer support (`unique_ptr`, `shared_ptr`)
 
-**Future:**
+**Next:**
 - [ ] Reference parameters and bound class passing
 - [ ] Const method overload distinction
 - [ ] Template class binding automation
-- [ ] Performance benchmarks vs pybind11
 - [ ] Additional backends (Rust, Lua)
 - [ ] Python stub generation (.pyi files)
+
+## Benchmarks
+
+Comprehensive performance comparison vs pybind11 and Boost.Python:
+
+```bash
+./run_benchmarks.sh
+```
+
+Tests compile-time speed, runtime overhead, and developer experience across:
+- **Simple project**: 1 class, ~10 methods
+- **Medium project**: 10 classes, ~50 methods
+
+See [benchmarks/README.md](benchmarks/README.md) for detailed methodology and results.
 
 ## Contributing
 
@@ -434,7 +447,6 @@ This is an experimental project exploring C++26 reflection. Contributions welcom
 **Areas needing work:**
 - Extended parameter support for methods
 - Template class handling
-- Benchmark suite
 - Additional backends (Rust, Lua)
 
 ## License

@@ -45,3 +45,6 @@ class_hashes.db
 # AI guidance (not for public repo)
 claude.md
 CLAUDE.md
+
+# Benchmark results
+benchmarks/runtime/runtime_results.json

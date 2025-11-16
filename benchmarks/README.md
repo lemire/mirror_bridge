@@ -46,15 +46,37 @@ Measures how much code developers need to write.
 
 ## Running Benchmarks
 
-### Inside Docker Container
+### Quick Start (Recommended)
 
 ```bash
-./start_dev_container.sh
-cd /workspace/benchmarks
-./run_all_benchmarks.sh
+# From project root
+./run_benchmarks.sh
 ```
 
-This will:
+This script will:
+1. Build the benchmark Docker image (if not already built)
+2. Run all benchmarks inside the container
+3. Display results and save to JSON
+
+**First run**: ~30-60 minutes (builds Docker image with clang + pybind11 + Boost.Python)
+**Subsequent runs**: ~5-6 minutes (just runs benchmarks)
+
+### Manual Run (Advanced)
+
+If you want more control:
+
+```bash
+# Build benchmark image
+docker build -f Dockerfile.benchmarks -t mirror_bridge:benchmarks .
+
+# Run benchmarks
+docker run --rm -v $(pwd):/workspace mirror_bridge:benchmarks bash -c \
+  "cd /workspace/benchmarks && ./run_all_benchmarks.sh"
+```
+
+### What Gets Run
+
+The benchmark suite will:
 1. Build all binding modules (Mirror Bridge, pybind11, Boost.Python)
 2. Measure compile times for simple and medium projects
 3. Run runtime performance tests
