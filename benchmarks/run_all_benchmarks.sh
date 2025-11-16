@@ -110,25 +110,34 @@ echo ""
 
 cd "$BENCHMARK_DIR/compile_time/simple"
 
-echo -n "  Mirror Bridge...  "
-time_mb=$(measure_compile_time "mirror_bridge_binding.cpp" "$BUILD_DIR/simple_mb.so" "-I$PROJECT_ROOT")
-size_mb=$(get_size_kb "$BUILD_DIR/simple_mb.so")
-echo -e "${GREEN}${time_mb}ms  (${size_mb} KB)${NC}"
+echo -n "  Mirror Bridge (manual)...       "
+rm -f "$BUILD_DIR/simple_mb_manual.so"
+time_mb_manual=$(measure_compile_time "mirror_bridge_binding.cpp" "$BUILD_DIR/simple_mb_manual.so" "-I$PROJECT_ROOT")
+size_mb_manual=$(get_size_kb "$BUILD_DIR/simple_mb_manual.so")
+echo -e "${GREEN}${time_mb_manual}ms  (${size_mb_manual} KB)${NC}"
 
-echo -n "  pybind11...       "
-# Note: pybind11 also needs same optimization flags for fair comparison
+echo -n "  Mirror Bridge (auto-discovery)..."
+rm -f "$BUILD_DIR/simple_mb_auto.so"
+start=$(date +%s%3N)
+cd "$PROJECT_ROOT" && ./mirror_bridge_auto "$BENCHMARK_DIR/compile_time/simple" --module simple_mb_auto > /dev/null 2>&1
+end=$(date +%s%3N)
+time_mb_auto=$((end - start))
+size_mb_auto=$(get_size_kb "$BUILD_DIR/simple_mb_auto.so")
+cd "$BENCHMARK_DIR/compile_time/simple"
+echo -e "${GREEN}${time_mb_auto}ms  (${size_mb_auto} KB)${NC}"
+
+echo -n "  pybind11 (manual)...            "
+rm -f "$BUILD_DIR/simple_pb.so"
 time_pb=$(measure_compile_time_pybind11 "pybind11_binding.cpp" "$BUILD_DIR/simple_pb.so" "-I/usr/include/python3.10")
 size_pb=$(get_size_kb "$BUILD_DIR/simple_pb.so")
 echo -e "${GREEN}${time_pb}ms  (${size_pb} KB)${NC}"
 
-echo -n "  Boost.Python...   "
-echo -e "${YELLOW}SKIPPED (incompatible with libc++)${NC}"
-time_bp="0"
-size_bp="0"
-
 echo ""
-ratio_mb_pb=$(awk "BEGIN {printf \"%.2f\", $time_pb/$time_mb}")
-echo -e "  Speedup vs pybind11: ${ratio_mb_pb}x faster"
+ratio_manual=$(awk "BEGIN {printf \"%.2f\", $time_pb/$time_mb_manual}")
+ratio_auto=$(awk "BEGIN {printf \"%.2f\", $time_pb/$time_mb_auto}")
+echo -e "  Speedup vs pybind11:"
+echo -e "    Manual binding:       ${ratio_manual}x faster"
+echo -e "    Auto-discovery:       ${ratio_auto}x faster"
 echo ""
 
 # Medium benchmark
@@ -137,24 +146,34 @@ echo ""
 
 cd "$BENCHMARK_DIR/compile_time/medium"
 
-echo -n "  Mirror Bridge...  "
-time_mb_med=$(measure_compile_time "mirror_bridge_binding.cpp" "$BUILD_DIR/medium_mb.so" "-I$PROJECT_ROOT")
-size_mb_med=$(get_size_kb "$BUILD_DIR/medium_mb.so")
-echo -e "${GREEN}${time_mb_med}ms  (${size_mb_med} KB)${NC}"
+echo -n "  Mirror Bridge (manual)...       "
+rm -f "$BUILD_DIR/medium_mb_manual.so"
+time_mb_med_manual=$(measure_compile_time "mirror_bridge_binding.cpp" "$BUILD_DIR/medium_mb_manual.so" "-I$PROJECT_ROOT")
+size_mb_med_manual=$(get_size_kb "$BUILD_DIR/medium_mb_manual.so")
+echo -e "${GREEN}${time_mb_med_manual}ms  (${size_mb_med_manual} KB)${NC}"
 
-echo -n "  pybind11...       "
+echo -n "  Mirror Bridge (auto-discovery)..."
+rm -f "$BUILD_DIR/medium_mb_auto.so"
+start=$(date +%s%3N)
+cd "$PROJECT_ROOT" && ./mirror_bridge_auto "$BENCHMARK_DIR/compile_time/medium" --module medium_mb_auto > /dev/null 2>&1
+end=$(date +%s%3N)
+time_mb_med_auto=$((end - start))
+size_mb_med_auto=$(get_size_kb "$BUILD_DIR/medium_mb_auto.so")
+cd "$BENCHMARK_DIR/compile_time/medium"
+echo -e "${GREEN}${time_mb_med_auto}ms  (${size_mb_med_auto} KB)${NC}"
+
+echo -n "  pybind11 (manual)...            "
+rm -f "$BUILD_DIR/medium_pb.so"
 time_pb_med=$(measure_compile_time_pybind11 "pybind11_binding.cpp" "$BUILD_DIR/medium_pb.so" "-I/usr/include/python3.10")
 size_pb_med=$(get_size_kb "$BUILD_DIR/medium_pb.so")
 echo -e "${GREEN}${time_pb_med}ms  (${size_pb_med} KB)${NC}"
 
-echo -n "  Boost.Python...   "
-echo -e "${YELLOW}SKIPPED (incompatible with libc++)${NC}"
-time_bp_med="0"
-size_bp_med="0"
-
 echo ""
-ratio_mb_pb_med=$(awk "BEGIN {printf \"%.2f\", $time_pb_med/$time_mb_med}")
-echo -e "  Speedup vs pybind11: ${ratio_mb_pb_med}x faster"
+ratio_manual_med=$(awk "BEGIN {printf \"%.2f\", $time_pb_med/$time_mb_med_manual}")
+ratio_auto_med=$(awk "BEGIN {printf \"%.2f\", $time_pb_med/$time_mb_med_auto}")
+echo -e "  Speedup vs pybind11:"
+echo -e "    Manual binding:       ${ratio_manual_med}x faster"
+echo -e "    Auto-discovery:       ${ratio_auto_med}x faster"
 echo ""
 
 # Developer Experience metrics
@@ -166,14 +185,18 @@ echo ""
 echo -e "${BLUE}Lines of Binding Code${NC}"
 echo ""
 echo "  Simple project:"
-echo "    Mirror Bridge:  $(wc -l < "$BENCHMARK_DIR/compile_time/simple/mirror_bridge_binding.cpp" | tr -d ' ') lines"
-echo "    pybind11:       $(wc -l < "$BENCHMARK_DIR/compile_time/simple/pybind11_binding.cpp" | tr -d ' ') lines"
-echo "    Boost.Python:   $(wc -l < "$BENCHMARK_DIR/compile_time/simple/boost_python_binding.cpp" | tr -d ' ') lines"
+echo "    Mirror Bridge (manual):        $(wc -l < "$BENCHMARK_DIR/compile_time/simple/mirror_bridge_binding.cpp" | tr -d ' ') lines"
+echo "    Mirror Bridge (auto-discovery): 0 lines (just: mirror_bridge_auto src/ --module name)"
+echo "    pybind11:                      $(wc -l < "$BENCHMARK_DIR/compile_time/simple/pybind11_binding.cpp" | tr -d ' ') lines"
 echo ""
 echo "  Medium project:"
-echo "    Mirror Bridge:  $(wc -l < "$BENCHMARK_DIR/compile_time/medium/mirror_bridge_binding.cpp" | tr -d ' ') lines"
-echo "    pybind11:       $(wc -l < "$BENCHMARK_DIR/compile_time/medium/pybind11_binding.cpp" | tr -d ' ') lines"
-echo "    Boost.Python:   $(wc -l < "$BENCHMARK_DIR/compile_time/medium/boost_python_binding.cpp" | tr -d ' ') lines"
+echo "    Mirror Bridge (manual):        $(wc -l < "$BENCHMARK_DIR/compile_time/medium/mirror_bridge_binding.cpp" | tr -d ' ') lines"
+echo "    Mirror Bridge (auto-discovery): 0 lines (just: mirror_bridge_auto src/ --module name)"
+echo "    pybind11:                      $(wc -l < "$BENCHMARK_DIR/compile_time/medium/pybind11_binding.cpp" | tr -d ' ') lines"
+echo ""
+echo "  Code reduction vs pybind11:"
+echo "    Simple:  $(wc -l < "$BENCHMARK_DIR/compile_time/simple/pybind11_binding.cpp" | tr -d ' ')x less with manual, infinite with auto-discovery"
+echo "    Medium:  $(wc -l < "$BENCHMARK_DIR/compile_time/medium/pybind11_binding.cpp" | tr -d ' ')x less with manual, infinite with auto-discovery"
 echo ""
 
 # Runtime benchmarks
