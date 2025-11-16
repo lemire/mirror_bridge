@@ -66,7 +66,7 @@ fi
 mkdir -p "$BUILD_DIR"
 
 # Step 1: Build all bindings
-echo -e "${YELLOW}[STEP 1/2] Building all bindings...${NC}"
+echo -e "${YELLOW}[STEP 1/3] Building all bindings...${NC}"
 echo ""
 
 cd "$TEST_DIR"
@@ -113,7 +113,7 @@ while IFS= read -r -d '' binding_file; do
 done < <(find . -name "*.cpp" -type f -print0)
 
 # Step 2: Run all Python tests
-echo -e "${YELLOW}[STEP 2/2] Running Python tests...${NC}"
+echo -e "${YELLOW}[STEP 2/3] Running Python tests...${NC}"
 echo ""
 
 # Set PYTHONPATH to include build directory
@@ -184,6 +184,40 @@ while IFS= read -r -d '' test_file; do
     fi
     echo ""
 done < <(find "$TEST_DIR" -name "test_*.py" -type f -print0)
+
+# Step 3: Run shell-based tests (auto-discovery, config-file)
+echo -e "${YELLOW}[STEP 3/3] Running CLI tool tests...${NC}"
+echo ""
+
+# Find all test_*.sh files
+while IFS= read -r -d '' test_script; do
+    [ -f "$test_script" ] || continue
+
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+
+    test_name=$(basename "$test_script")
+
+    echo -e "${BLUE}Running ${test_name}...${NC}"
+
+    # Run the shell test script
+    if bash "$test_script" > /tmp/test_output.txt 2>&1; then
+        echo -e "${GREEN}✓ Passed: ${test_name}${NC}"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+
+        # Show test output if verbose
+        if [ -n "$VERBOSE" ]; then
+            cat /tmp/test_output.txt | sed 's/^/  /'
+        fi
+    else
+        echo -e "${RED}✗ Failed: ${test_name}${NC}"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+
+        # Always show failed test output
+        echo -e "${RED}Error output:${NC}"
+        cat /tmp/test_output.txt | sed 's/^/  /'
+    fi
+    echo ""
+done < <(find "$TEST_DIR" -name "test_*.sh" -type f -print0)
 
 # Summary
 echo -e "${BLUE}=======================================${NC}"

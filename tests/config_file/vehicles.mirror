@@ -1,0 +1,6 @@
+module: vehicles_config
+
+include_dirs: .
+
+Vehicle: vehicle.hpp
+Engine: engine.hpp
