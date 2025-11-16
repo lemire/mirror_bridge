@@ -46,6 +46,36 @@ measure_compile_time() {
         rm -f "$output_file"
         start=$(date +%s%3N)
         clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+            -O3 -DNDEBUG \
+            $include_flags -fPIC -shared \
+            $(python3-config --includes --ldflags) \
+            "$binding_file" -o "$output_file" 2>&1 | grep -v "mixture of designated" > /dev/null || true
+        end=$(date +%s%3N)
+        times+=($((end - start)))
+    done
+
+    # Return median
+    IFS=$'\n' sorted=($(sort -n <<<"${times[*]}"))
+    echo "${sorted[1]}"
+}
+
+# Function to measure pybind11 compile time (uses same optimization flags)
+measure_compile_time_pybind11() {
+    local binding_file=$1
+    local output_file=$2
+    local include_flags=$3
+
+    # Clear cache
+    sync
+    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+    # Measure compilation time (3 runs, take median)
+    local times=()
+    for i in {1..3}; do
+        rm -f "$output_file"
+        start=$(date +%s%3N)
+        clang++ -std=c++20 -stdlib=libc++ \
+            -O3 -DNDEBUG \
             $include_flags -fPIC -shared \
             $(python3-config --includes --ldflags) \
             "$binding_file" -o "$output_file" 2>&1 | grep -v "mixture of designated" > /dev/null || true
@@ -86,7 +116,8 @@ size_mb=$(get_size_kb "$BUILD_DIR/simple_mb.so")
 echo -e "${GREEN}${time_mb}ms  (${size_mb} KB)${NC}"
 
 echo -n "  pybind11...       "
-time_pb=$(measure_compile_time "pybind11_binding.cpp" "$BUILD_DIR/simple_pb.so" "-I/usr/include/python3.10")
+# Note: pybind11 also needs same optimization flags for fair comparison
+time_pb=$(measure_compile_time_pybind11 "pybind11_binding.cpp" "$BUILD_DIR/simple_pb.so" "-I/usr/include/python3.10")
 size_pb=$(get_size_kb "$BUILD_DIR/simple_pb.so")
 echo -e "${GREEN}${time_pb}ms  (${size_pb} KB)${NC}"
 
@@ -112,7 +143,7 @@ size_mb_med=$(get_size_kb "$BUILD_DIR/medium_mb.so")
 echo -e "${GREEN}${time_mb_med}ms  (${size_mb_med} KB)${NC}"
 
 echo -n "  pybind11...       "
-time_pb_med=$(measure_compile_time "pybind11_binding.cpp" "$BUILD_DIR/medium_pb.so" "-I/usr/include/python3.10")
+time_pb_med=$(measure_compile_time_pybind11 "pybind11_binding.cpp" "$BUILD_DIR/medium_pb.so" "-I/usr/include/python3.10")
 size_pb_med=$(get_size_kb "$BUILD_DIR/medium_pb.so")
 echo -e "${GREEN}${time_pb_med}ms  (${size_pb_med} KB)${NC}"
 
@@ -158,11 +189,13 @@ echo "Building runtime benchmark modules..."
 echo ""
 
 clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+    -O3 -DNDEBUG \
     -I"$PROJECT_ROOT" -fPIC -shared \
     $(python3-config --includes --ldflags) \
     mirror_bridge_binding.cpp -o "$BUILD_DIR/bench_mb.so" 2>&1 | grep -v "mixture of designated" || true
 
 clang++ -std=c++20 -stdlib=libc++ \
+    -O3 -DNDEBUG \
     -I/usr/include/python3.10 -fPIC -shared \
     $(python3-config --includes --ldflags) \
     pybind11_binding.cpp -o "$BUILD_DIR/bench_pb.so" 2>&1 | grep -v "mixture of designated" || true
