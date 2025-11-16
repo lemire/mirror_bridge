@@ -93,6 +93,10 @@ concept Container =
         typename std::remove_cvref_t<T>::value_type;
     };
 
+// Concept for enum types
+template<typename T>
+concept EnumType = std::is_enum_v<std::remove_cvref_t<T>>;
+
 // Concept for types that can be bound to Python (classes with reflectable members)
 template<typename T>
 concept Bindable = std::is_class_v<std::remove_cvref_t<T>> && requires {
@@ -133,6 +137,22 @@ PyObject* to_python(const T& value) {
     } else {
         return PyLong_FromUnsignedLong(static_cast<unsigned long>(value));
     }
+}
+
+// Enum to Python conversion - convert to int
+template<EnumType T>
+PyObject* to_python(const T& value) {
+    return PyLong_FromLong(static_cast<long>(value));
+}
+
+// Enum from Python conversion - convert from int
+template<EnumType T>
+inline bool from_python(PyObject* obj, T& out) {
+    if (!PyLong_Check(obj)) return false;
+    long value = PyLong_AsLong(obj);
+    if (value == -1 && PyErr_Occurred()) return false;
+    out = static_cast<T>(value);
+    return true;
 }
 
 template<StringLike T>
@@ -640,7 +660,22 @@ consteval auto get_member_info() {
     return std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current())[Index];
 }
 
+// ============================================================================
 // Getter for class members using reflection
+// ============================================================================
+// Template parameters:
+//   T - The C++ class type being bound
+//   Index - Compile-time index of the member to access (0, 1, 2, ...)
+//
+// Performance: This function is instantiated once per member at compile-time.
+// The compiler generates specialized code for each member type, eliminating
+// runtime type dispatch overhead present in traditional template-based bindings.
+//
+// Example generated code for "int counter":
+//   return PyLong_FromLong(wrapper->cpp_object->counter);
+// vs pybind11 (simplified):
+//   return type_caster<int>::cast(getter_function<T, &T::counter>());
+//
 template<typename T, std::size_t Index>
 PyObject* py_getter(PyObject* self, void* closure) {
     auto* wrapper = reinterpret_cast<PyWrapper<T>*>(self);
@@ -649,13 +684,18 @@ PyObject* py_getter(PyObject* self, void* closure) {
         return nullptr;
     }
 
-    // Use reflection to access the member at the given index
+    // Reflection splice: Get the Nth member metadata at compile-time
+    // [:member:] is a C++26 splicer that injects the actual member name
     constexpr auto member = get_member_info<T, Index>();
     using MemberType = typename [:std::meta::type_of(member):];
 
-    // Access the member value through reflection
+    // Direct member access via reflection - zero runtime overhead
     auto& value = wrapper->cpp_object->[:member:];
-    // Let overload resolution choose - non-template overloads have higher priority
+
+    // Type conversion to Python uses overload resolution:
+    // - Arithmetic → PyLong_FromLong / PyFloat_FromDouble (direct C API)
+    // - String → PyUnicode_FromStringAndSize (direct C API)
+    // - Container → Recursive to_python for elements
     return to_python(value);
 }
 
@@ -1131,14 +1171,24 @@ PyTypeObject* bind_class(PyObject* module, const char* name, const char* file_ha
     // Check if class has parameterized constructors
     constexpr std::size_t ctor_count = get_constructor_count<T>();
 
+    // Generic repr function for all types
+    static auto py_repr_func = +[](PyObject* self) -> PyObject* {
+        auto* wrapper = reinterpret_cast<PyWrapper<T>*>(self);
+        std::ostringstream oss;
+        oss << "<" << name << " object at " << wrapper->cpp_object << ">";
+        return PyUnicode_FromString(oss.str().c_str());
+    };
+
     // Define the Python type structure
+    // Note: Inheritance is implicitly supported - reflection sees all members including inherited ones
     static PyTypeObject type_object = {
         PyVarObject_HEAD_INIT(nullptr, 0)
         .tp_name = name,
         .tp_basicsize = sizeof(PyWrapper<T>),
         .tp_itemsize = 0,
         .tp_dealloc = py_dealloc<T>,
-        .tp_flags = Py_TPFLAGS_DEFAULT,
+        .tp_repr = (reprfunc)py_repr_func,
+        .tp_flags = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE,  // Allow subclassing
         .tp_doc = "Auto-generated binding via mirror_bridge reflection",
         .tp_methods = methods.data(),
         .tp_getset = getsetters.data(),

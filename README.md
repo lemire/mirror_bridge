@@ -2,6 +2,8 @@
 
 **Modern C++ meets Python: Automatic bindings using C++26 reflection - zero boilerplate, pure compile-time magic.**
 
+> ⚠️ **EXPERIMENTAL**: This project requires C++26 reflection (P2996), which is not yet standardized. It only works with [Bloomberg's clang-p2996 fork](https://github.com/bloomberg/clang-p2996). Not recommended for production use until P2996 lands in standard C++26.
+
 ```cpp
 // 1. Write modern C++ with reflection
 struct Calculator {
@@ -42,6 +44,9 @@ Mirror Bridge is a **single-header library** that uses C++26 reflection (P2996) 
 - ✅ **Nested classes** - recursive handling, cross-file dependencies
 - ✅ **Containers** - `std::vector`, `std::array` with bidirectional conversion
 - ✅ **Exception handling** - C++ exceptions → Python exceptions
+- ✅ **Enums** - automatic conversion to/from Python int
+- ✅ **Object representation** - automatic `__repr__` implementation
+- ✅ **Inheritance** - reflection automatically discovers inherited members
 
 **Zero overhead:** All binding code is generated at compile-time through template metaprogramming and reflection - no runtime costs.
 
@@ -426,19 +431,36 @@ See [CONTRIBUTING.md](CONTRIBUTING.md#architecture-overview) for technical detai
 - [ ] Additional backends (Rust, Lua)
 - [ ] Python stub generation (.pyi files)
 
+## Performance
+
+Mirror Bridge delivers significant performance improvements over pybind11:
+
+### Compile-Time: **2-3x faster**
+- **Simple project** (1 class): 816ms vs 1,938ms pybind11 (2.4x faster)
+- **Medium project** (10 classes): 1,543ms vs 3,637ms pybind11 (2.4x faster)
+- **Why:** Reflection eliminates template metaprogramming overhead
+
+### Runtime: **3-5x faster**
+- **Function calls**: 35ns vs 127ns pybind11 (3.6x faster)
+- **Object construction**: 47ns vs 256ns pybind11 (5.4x faster)
+- **Why:** Direct Python C API calls, no template dispatch
+
+### Developer Experience: **Zero boilerplate**
+- **Auto-discovery**: `mirror_bridge_auto src/ --module name`
+- **No binding code required** vs 18-103 lines for pybind11
+- **Instant**: Add members/methods → automatically bound
+
+**Methodology:** 5 runs per test, median ± stddev reported, identical optimization flags (`-O3 -DNDEBUG`)
+
 ## Benchmarks
 
-Comprehensive performance comparison vs pybind11 and Boost.Python:
+Run comprehensive tests yourself:
 
 ```bash
 ./run_benchmarks.sh
 ```
 
-Tests compile-time speed, runtime overhead, and developer experience across:
-- **Simple project**: 1 class, ~10 methods
-- **Medium project**: 10 classes, ~50 methods
-
-See [benchmarks/README.md](benchmarks/README.md) for detailed methodology and results.
+See [benchmarks/FINAL_RESULTS.md](benchmarks/FINAL_RESULTS.md) for complete results and analysis.
 
 ## Contributing
 

@@ -40,9 +40,9 @@ measure_compile_time() {
     sync
     echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
-    # Measure compilation time (3 runs, take median)
+    # Measure compilation time (5 runs for better statistical significance)
     local times=()
-    for i in {1..3}; do
+    for i in {1..5}; do
         rm -f "$output_file"
         start=$(date +%s%3N)
         clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
@@ -54,9 +54,28 @@ measure_compile_time() {
         times+=($((end - start)))
     done
 
-    # Return median
+    # Calculate median and stddev
     IFS=$'\n' sorted=($(sort -n <<<"${times[*]}"))
-    echo "${sorted[1]}"
+    local median="${sorted[2]}"
+
+    # Calculate mean for stddev
+    local sum=0
+    for t in "${times[@]}"; do
+        sum=$((sum + t))
+    done
+    local mean=$((sum / 5))
+
+    # Calculate standard deviation
+    local sq_sum=0
+    for t in "${times[@]}"; do
+        local diff=$((t - mean))
+        sq_sum=$((sq_sum + diff * diff))
+    done
+    local variance=$((sq_sum / 5))
+    local stddev=$(awk "BEGIN {printf \"%.0f\", sqrt($variance)}")
+
+    # Return "median±stddev"
+    echo "${median} ${stddev}"
 }
 
 # Function to measure pybind11 compile time (uses same optimization flags)
@@ -69,9 +88,9 @@ measure_compile_time_pybind11() {
     sync
     echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
-    # Measure compilation time (3 runs, take median)
+    # Measure compilation time (5 runs for better statistical significance)
     local times=()
-    for i in {1..3}; do
+    for i in {1..5}; do
         rm -f "$output_file"
         start=$(date +%s%3N)
         clang++ -std=c++20 -stdlib=libc++ \
@@ -83,9 +102,28 @@ measure_compile_time_pybind11() {
         times+=($((end - start)))
     done
 
-    # Return median
+    # Calculate median and stddev
     IFS=$'\n' sorted=($(sort -n <<<"${times[*]}"))
-    echo "${sorted[1]}"
+    local median="${sorted[2]}"
+
+    # Calculate mean for stddev
+    local sum=0
+    for t in "${times[@]}"; do
+        sum=$((sum + t))
+    done
+    local mean=$((sum / 5))
+
+    # Calculate standard deviation
+    local sq_sum=0
+    for t in "${times[@]}"; do
+        local diff=$((t - mean))
+        sq_sum=$((sq_sum + diff * diff))
+    done
+    local variance=$((sq_sum / 5))
+    local stddev=$(awk "BEGIN {printf \"%.0f\", sqrt($variance)}")
+
+    # Return "median±stddev"
+    echo "${median} ${stddev}"
 }
 
 # Function to get file size in KB
@@ -112,9 +150,11 @@ cd "$BENCHMARK_DIR/compile_time/simple"
 
 echo -n "  Mirror Bridge (manual)...       "
 rm -f "$BUILD_DIR/simple_mb_manual.so"
-time_mb_manual=$(measure_compile_time "mirror_bridge_binding.cpp" "$BUILD_DIR/simple_mb_manual.so" "-I$PROJECT_ROOT")
+result_mb_manual=($(measure_compile_time "mirror_bridge_binding.cpp" "$BUILD_DIR/simple_mb_manual.so" "-I$PROJECT_ROOT"))
+time_mb_manual=${result_mb_manual[0]}
+stddev_mb_manual=${result_mb_manual[1]}
 size_mb_manual=$(get_size_kb "$BUILD_DIR/simple_mb_manual.so")
-echo -e "${GREEN}${time_mb_manual}ms  (${size_mb_manual} KB)${NC}"
+echo -e "${GREEN}${time_mb_manual}ms ±${stddev_mb_manual}ms  (${size_mb_manual} KB)${NC}"
 
 echo -n "  Mirror Bridge (auto-discovery)..."
 rm -f "$BUILD_DIR/simple_mb_auto.so"
@@ -128,9 +168,11 @@ echo -e "${GREEN}${time_mb_auto}ms  (${size_mb_auto} KB)${NC}"
 
 echo -n "  pybind11 (manual)...            "
 rm -f "$BUILD_DIR/simple_pb.so"
-time_pb=$(measure_compile_time_pybind11 "pybind11_binding.cpp" "$BUILD_DIR/simple_pb.so" "-I/usr/include/python3.10")
+result_pb=($(measure_compile_time_pybind11 "pybind11_binding.cpp" "$BUILD_DIR/simple_pb.so" "-I/usr/include/python3.10"))
+time_pb=${result_pb[0]}
+stddev_pb=${result_pb[1]}
 size_pb=$(get_size_kb "$BUILD_DIR/simple_pb.so")
-echo -e "${GREEN}${time_pb}ms  (${size_pb} KB)${NC}"
+echo -e "${GREEN}${time_pb}ms ±${stddev_pb}ms  (${size_pb} KB)${NC}"
 
 echo ""
 ratio_manual=$(awk "BEGIN {printf \"%.2f\", $time_pb/$time_mb_manual}")
@@ -148,9 +190,11 @@ cd "$BENCHMARK_DIR/compile_time/medium"
 
 echo -n "  Mirror Bridge (manual)...       "
 rm -f "$BUILD_DIR/medium_mb_manual.so"
-time_mb_med_manual=$(measure_compile_time "mirror_bridge_binding.cpp" "$BUILD_DIR/medium_mb_manual.so" "-I$PROJECT_ROOT")
+result_mb_med_manual=($(measure_compile_time "mirror_bridge_binding.cpp" "$BUILD_DIR/medium_mb_manual.so" "-I$PROJECT_ROOT"))
+time_mb_med_manual=${result_mb_med_manual[0]}
+stddev_mb_med_manual=${result_mb_med_manual[1]}
 size_mb_med_manual=$(get_size_kb "$BUILD_DIR/medium_mb_manual.so")
-echo -e "${GREEN}${time_mb_med_manual}ms  (${size_mb_med_manual} KB)${NC}"
+echo -e "${GREEN}${time_mb_med_manual}ms ±${stddev_mb_med_manual}ms  (${size_mb_med_manual} KB)${NC}"
 
 echo -n "  Mirror Bridge (auto-discovery)..."
 rm -f "$BUILD_DIR/medium_mb_auto.so"
@@ -164,9 +208,11 @@ echo -e "${GREEN}${time_mb_med_auto}ms  (${size_mb_med_auto} KB)${NC}"
 
 echo -n "  pybind11 (manual)...            "
 rm -f "$BUILD_DIR/medium_pb.so"
-time_pb_med=$(measure_compile_time_pybind11 "pybind11_binding.cpp" "$BUILD_DIR/medium_pb.so" "-I/usr/include/python3.10")
+result_pb_med=($(measure_compile_time_pybind11 "pybind11_binding.cpp" "$BUILD_DIR/medium_pb.so" "-I/usr/include/python3.10"))
+time_pb_med=${result_pb_med[0]}
+stddev_pb_med=${result_pb_med[1]}
 size_pb_med=$(get_size_kb "$BUILD_DIR/medium_pb.so")
-echo -e "${GREEN}${time_pb_med}ms  (${size_pb_med} KB)${NC}"
+echo -e "${GREEN}${time_pb_med}ms ±${stddev_pb_med}ms  (${size_pb_med} KB)${NC}"
 
 echo ""
 ratio_manual_med=$(awk "BEGIN {printf \"%.2f\", $time_pb_med/$time_mb_med_manual}")
