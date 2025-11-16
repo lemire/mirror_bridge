@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Build and install clang-p2996 with reflection support
+# Build and install clang-p2996 with reflection support AND libcxx
 # This branch implements the C++26 reflection proposal (P2996)
 WORKDIR /opt
 RUN git clone --depth 1 --branch p2996 https://github.com/bloomberg/clang-p2996.git
@@ -25,7 +25,8 @@ WORKDIR /opt/clang-p2996/build
 RUN cmake -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DLLVM_ENABLE_PROJECTS="clang" \
-    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi" \
+    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+    -DLIBCXX_ENABLE_REFLECTION=ON \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
     ../llvm && \
     ninja && \
@@ -35,6 +36,12 @@ RUN cmake -G Ninja \
 # Set up compiler environment variables for easy access
 ENV CC=/usr/local/bin/clang
 ENV CXX=/usr/local/bin/clang++
+
+# Add libc++ to library path (it's in the target-specific directory)
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:$LD_LIBRARY_PATH
+
+# Configure ldconfig to find libc++
+RUN echo "/usr/local/lib/aarch64-unknown-linux-gnu" > /etc/ld.so.conf.d/libc++.conf && ldconfig
 
 # Create workspace directory
 WORKDIR /workspace

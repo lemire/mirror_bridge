@@ -5,13 +5,13 @@
 set -e
 
 CONTAINER_NAME="mirror_bridge_dev"
-IMAGE_NAME="mirror_bridge:withmeta"
+IMAGE_NAME="mirror_bridge:latest"
 
 # Check if image exists, if not build it
 if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
     echo "=== Building $IMAGE_NAME (first time only) ==="
-    echo "This will take ~1 minute to add the <meta> header..."
-    docker build -f Dockerfile.withmeta -t "$IMAGE_NAME" .
+    echo "This will take ~30-60 minutes to build clang-p2996 with reflection support..."
+    docker build -t "$IMAGE_NAME" .
     echo "✓ Image built successfully!"
     echo ""
 fi

@@ -47,46 +47,77 @@ Mirror Bridge is a **single-header library** that uses C++26 reflection (P2996) 
 
 ## Quick Start
 
-> **New to Mirror Bridge?** See [QUICKSTART.md](QUICKSTART.md) for a 5-minute tutorial with copy-paste examples.
+### 5-Minute Tutorial
 
-### 1. Setup (One-time, ~5-15 minutes)
-
+**1. Get the environment (one-time setup)**
 ```bash
-# Build Docker container with reflection compiler
 ./start_dev_container.sh
-
-# This creates a persistent container with all tools installed
 # First run: ~30-60 min to build clang-p2996
-# Future runs: instant (container persists)
+# Future runs: instant
 ```
 
-### 2. Run Tests
-
+**2. Inside container - verify it works**
 ```bash
-# Inside container - run all automated tests
 cd /workspace
 ./tests/run_all_tests.sh
-
-# Output: ✓ ALL TESTS PASSED! (8 tests including method binding)
+# Expected: ✓ ALL TESTS PASSED! (12/12)
 ```
 
-### 3. Try the Examples
-
+**3. Try an example**
 ```bash
-# Inside container
-
-# Example 1: Auto-discovery (minimal friction)
 cd examples/option2
-../../mirror_bridge_auto src/ --module math_module
-python3 test_option2.py
-# ✓ Works!
+cat src/calculator.hpp  # Just a normal C++ class
 
-# Example 2: Config file (production control)
-cd ../option3
-../../mirror_bridge_generate math.mirror
-python3 test_option3.py
-# ✓ Works!
+# Generate bindings automatically
+../../mirror_bridge_auto src/ --module math_module
+
+# Use from Python
+python3 test_option2.py
 ```
+
+**4. Create your own**
+```bash
+cd /workspace
+
+# Write a C++ header
+cat > person.hpp << 'EOF'
+struct Person {
+    std::string name;
+    int age;
+
+    Person() = default;
+    Person(std::string n, int a) : name(n), age(a) {}
+
+    int birth_year(int current_year) { return current_year - age; }
+};
+EOF
+
+# Create binding (one line!)
+cat > person_binding.cpp << 'EOF'
+#include "mirror_bridge.hpp"
+#include "person.hpp"
+
+MIRROR_BRIDGE_MODULE(people,
+    mirror_bridge::bind_class<Person>(m, "Person");
+)
+EOF
+
+# Compile
+clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+    -I. -fPIC -shared $(python3-config --includes --ldflags) \
+    person_binding.cpp -o build/people.so
+
+# Use from Python
+python3 << 'EOF'
+import sys; sys.path.insert(0, 'build')
+import people
+
+p = people.Person("Alice", 30)
+print(f"{p.name} was born in {p.birth_year(2024)}")  # Alice was born in 1994
+EOF
+```
+
+That's it! See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guide.
 
 ## Two Approaches to Auto-Generation
 
@@ -327,7 +358,7 @@ Mirror Bridge leverages C++26 reflection at compile-time:
 
 **All binding logic is resolved at compile-time - zero runtime overhead.**
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for technical deep-dive.
+See [CONTRIBUTING.md](CONTRIBUTING.md#architecture-overview) for technical details.
 
 ## Requirements
 
@@ -369,17 +400,8 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for technical deep-dive.
 
 ## Documentation
 
-### Getting Started
-- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute tutorial: setup → running tests → creating your first binding
-- **[examples/README.md](examples/README.md)** - Complete usage guide with workflow comparisons
-
-### Reference
-- **[TOOLS.md](TOOLS.md)** - CLI tools reference: `mirror_bridge_auto`, `mirror_bridge_generate`, `mirror_bridge_build`
-- **[TESTING.md](TESTING.md)** - Test suite documentation, writing tests, advanced feature examples
-
-### Advanced
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** - Technical deep-dive: reflection internals, template metaprogramming
-- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development workflow, Docker setup, troubleshooting
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Development guide: setup, testing, CLI tools, architecture
+- **[examples/README.md](examples/README.md)** - Usage examples and workflow comparisons
 - **API Reference** - Inline documentation in [`mirror_bridge.hpp`](mirror_bridge.hpp)
 
 ## Current Limitations
