@@ -449,6 +449,6 @@ Apache License 2.0 - See [LICENSE](LICENSE) for details.
 
 ---
 
-**Status**: Experimental - C++26 reflection is not yet standardized. This project uses Bloomberg's clang-p2996 implementation.
+**Status**: Experimental - C++26 reflection is not yet supported on all C++ compilers. This project uses Bloomberg's clang-p2996 implementation.
 
 **Yes, method binding works!** See calculator tests for full examples.
