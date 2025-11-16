@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 # Configuration
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$PROJECT_ROOT/build"
-TEST_DIR="$PROJECT_ROOT/tests/e2e"
+TEST_DIR="$PROJECT_ROOT/tests"
 BINDING_SCRIPT="$PROJECT_ROOT/build_bindings.sh"
 
 # Set up environment for libc++ (needed for reflection support)
