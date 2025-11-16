@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     wget \
     ca-certificates \
+    pybind11-dev \
+    libboost-python-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Build and install clang-p2996 with reflection support AND libcxx
