@@ -237,37 +237,120 @@ The `[:member:]` syntax is P2996's way of "splicing" reflection metadata back in
 - SWIG: External code generator, less type-safe
 - ctypes: Manual ABI management, error-prone
 
-## Limitations and Future Work
+## Advanced Features
+
+### 1. Variadic Parameter Support
+
+Methods with any number of parameters are fully supported through template parameter packs and index sequences:
+
+```cpp
+struct MathOps {
+    double add3(double a, double b, double c) { return a + b + c; }
+    double sum5(double a, double b, double c, double d, double e) { return a + b + c + d + e; }
+};
+```
+
+The binding system automatically handles parameter unpacking using tuple-based conversion and fold expressions, supporting methods with arbitrary parameter counts without manual specification.
+
+### 2. Constructor Parameter Binding
+
+Constructors with parameters are automatically discovered through reflection and exposed to Python:
+
+```cpp
+struct Rectangle {
+    Rectangle() : width(0), height(0) {}
+    Rectangle(double w, double h) : width(w), height(h) {}
+    Rectangle(double w, double h, std::string n) : width(w), height(h), name(n) {}
+
+    double width, height;
+    std::string name;
+};
+```
+
+Python usage:
+```python
+r1 = Rectangle()                    # Default constructor
+r2 = Rectangle(10.0, 5.0)          # Two-parameter constructor
+r3 = Rectangle(10.0, 5.0, "rect")  # Three-parameter constructor
+```
+
+The system uses `std::meta::parameters_of` to introspect constructor signatures and matches them based on argument count.
+
+### 3. Method Overloading via Name Mangling
+
+Overloaded methods are automatically distinguished through type-based name mangling:
+
+```cpp
+struct Printer {
+    void print(int value) { /* ... */ }
+    void print(double value) { /* ... */ }
+    void print(std::string value) { /* ... */ }
+};
+```
+
+Python sees distinct methods:
+```python
+p = Printer()
+p.print_int(42)
+p.print_double(3.14)
+p.print_std__string("hello")
+```
+
+The reflection system detects overloads at compile-time using template recursion and generates unique names only when necessary.
+
+### 4. Smart Pointer Support
+
+`std::unique_ptr` and `std::shared_ptr` are automatically handled with bidirectional conversion:
+
+```cpp
+struct Data {
+    std::string name;
+    int value;
+};
+
+struct ResourceManager {
+    std::unique_ptr<Data> unique_data;
+    std::shared_ptr<Data> shared_data;
+
+    std::unique_ptr<Data> create_unique(std::string name, int value);
+    std::shared_ptr<Data> create_shared(std::string name, int value);
+};
+```
+
+Python usage:
+```python
+rm = ResourceManager()
+
+# Smart pointers convert to/from dicts
+result = rm.create_unique("test", 42)  # Returns {'name': 'test', 'value': 42}
+rm.unique_data = {'name': 'data', 'value': 123}
+
+# None handling for null pointers
+rm.unique_data = None  # Sets to nullptr
+```
+
+The system uses C++20 concepts (`SmartPointer`) to identify smart pointer types and SFINAE-based forward declarations to ensure proper template instantiation for element types.
+
+## Current Limitations and Future Work
 
 ### Current Limitations
 
-1. **Method Binding Not Yet Implemented**
-   - Currently only data members are bound
-   - Methods require additional reflection support for signatures
-   - Planned for next version using `std::meta::member_functions_of`
-
-2. **Basic Type Support**
-   - Arithmetic types and strings are supported
-   - Containers (vector, map, etc.) need concept-based handlers
-   - Custom types require recursive binding
-
-3. **Constructor Limitations**
-   - Only default constructor is currently exposed
-   - Need to reflect on constructors for parameterized creation
-
-4. **No Inheritance Support**
+1. **No Inheritance Support**
    - Base classes are not automatically bound
    - Need to walk inheritance hierarchy via reflection
 
+2. **Container Limitations**
+   - Basic containers (vector, array) are supported
+   - Advanced containers (map, unordered_map) need additional handlers
+   - Nested containers require recursive type resolution
+
+3. **No Const Method Distinction**
+   - Const and non-const overloads are not yet distinguished
+   - Need to extend name mangling to include cv-qualifiers
+
 ### Future Enhancements
 
-**Method Binding:**
-```cpp
-constexpr auto methods = std::meta::member_functions_of(^^T);
-// Generate PyMethodDef array similar to getsetters
-```
-
-**Container Support via Concepts:**
+**Enhanced Container Support:**
 ```cpp
 template<typename T>
 concept SequenceContainer = requires(T t) {

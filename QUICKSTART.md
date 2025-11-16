@@ -1,149 +1,200 @@
-# Mirror Bridge - Quick Start
+# Quick Start Guide
 
-## First Time Setup (30-60 minutes)
+Get Mirror Bridge running in 5 minutes. This guide assumes you want to try it out first, understand later.
 
-```bash
-./start_dev_container.sh
-```
-
-This will:
-1. Build Docker image with clang-p2996 + <meta> header (~30-60 min)
-2. Create persistent container `mirror_bridge_dev`
-3. Drop you into bash shell
-
-## Every Day After That (Instant)
+## Step 1: Get the Environment (One-Time Setup)
 
 ```bash
-./start_dev_container.sh
-```
+# Clone the repository (if you haven't)
+git clone <repository-url>
+cd mirror_bridge
 
-Instantly attaches to your existing container - all your work is still there!
-
-## Inside Container - Build and Test
-
-```bash
-# Build the bindings
-cd tests
-../build_bindings.sh
-
-# Run tests
-python3 test_vector3.py
-
-# Exit (container keeps running)
-exit
-```
-
-## Common Commands
-
-### From Your Host
-
-```bash
-# Start/attach to container
+# Build and start the Docker container with the reflection compiler
 ./start_dev_container.sh
 
-# Stop container (preserves state)
-docker stop mirror_bridge_dev
-
-# Remove container (start fresh next time)
-docker rm -f mirror_bridge_dev
-
-# Check if running
-docker ps | grep mirror_bridge
+# First run takes ~30-60 minutes (building clang-p2996)
+# Future runs are instant (container persists)
 ```
 
-### Inside Container
+You're now inside a container with everything you need. The `/workspace` directory is your project root.
+
+## Step 2: Run the Tests
 
 ```bash
-# Build all bindings
-cd /workspace/tests && ../build_bindings.sh
-
-# Build specific binding
-clang++ -std=c++2c -freflection -freflection-latest \
-  -fPIC -shared \
-  $(python3-config --includes --ldflags) \
-  vector3_binding.cpp -o ../build/vector3.so
-
-# Run Python tests
-python3 test_vector3.py
-
-# Check compiler version
-clang++ --version
-
-# Install packages (persists!)
-apt-get update && apt-get install -y vim
+# Verify everything works
+cd /workspace
+./tests/run_all_tests.sh
 ```
 
-## File Structure
+You should see: **✓ ALL TESTS PASSED! (12/12)**
 
-```
-/workspace/              # Your project (mounted from host)
-├── mirror_bridge.hpp    # Single-header library
-├── build/               # Compiled .so files (persisted in container)
-├── tests/               # Test cases
-│   ├── vector3.hpp      # Example C++ class
-│   ├── vector3_binding.cpp
-│   └── test_vector3.py
-└── build_bindings.sh    # Build script
-```
+## Step 3: Try the Examples
 
-## Workflow
+### Example 1: Auto-Discovery (Easiest)
 
-1. **Edit code on your host** (in your favorite editor)
-   - Changes appear instantly in `/workspace` inside container
-
-2. **Compile in container**
-   ```bash
-   ./start_dev_container.sh
-   cd tests && ../build_bindings.sh
-   ```
-
-3. **Test in container**
-   ```bash
-   python3 test_vector3.py
-   ```
-
-4. **Repeat** - container persists everything!
-
-## Troubleshooting
-
-**Container won't start?**
 ```bash
-docker rm -f mirror_bridge_dev
-./start_dev_container.sh
+cd /workspace/examples/option2
+
+# Look at the C++ code
+cat src/calculator.hpp  # Just a normal C++ class
+
+# Generate bindings automatically
+../../mirror_bridge_auto src/ --module math_module
+
+# Run it!
+python3 test_option2.py
 ```
 
-**Need clean slate?**
+**What just happened?**
+- The tool scanned `src/` for all C++ classes
+- Generated Python bindings for everything it found
+- Compiled to `build/math_module.so`
+- Python can now import and use your C++ class
+
+### Example 2: Config File (More Control)
+
 ```bash
-docker rm -f mirror_bridge_dev
-docker rmi mirror_bridge:withmeta
-./start_dev_container.sh  # Rebuilds
+cd /workspace/examples/option3
+
+# Look at the config file
+cat math.mirror  # Simple declarative config
+
+# Generate bindings from config
+../../mirror_bridge_generate math.mirror
+
+# Run it!
+python3 test_option3.py
 ```
 
-**See more help:**
-- [DEVELOPMENT.md](DEVELOPMENT.md) - Complete guide
-- [README.md](README.md) - Project overview
-- [write_up.md](write_up.md) - Technical details
+## Step 4: Create Your Own
 
-## What Gets Persisted?
+Create a simple example:
 
-✅ **Persisted between sessions:**
-- Compiled bindings in `/workspace/build/`
-- Installed apt/pip packages
-- Shell history
-- Any files you create
+```bash
+cd /workspace
 
-✅ **Synced with host (instant):**
-- All files in `/workspace` (your project directory)
-- Edit on host → instantly visible in container
+# Create a C++ header
+cat > my_class.hpp << 'EOF'
+#include <string>
 
-❌ **Not persisted (container restart):**
-- Running processes
-- `/tmp` contents
+struct Person {
+    std::string name;
+    int age;
 
-## Next Steps
+    Person() : name(""), age(0) {}
+    Person(std::string n, int a) : name(n), age(a) {}
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for:
-- Multiple terminal sessions
-- VS Code integration
-- Advanced Docker usage
-- Full troubleshooting guide
+    void greet() {
+        // This will work from Python!
+    }
+
+    int get_birth_year(int current_year) {
+        return current_year - age;
+    }
+};
+EOF
+
+# Create binding file
+cat > my_binding.cpp << 'EOF'
+#include "mirror_bridge.hpp"
+#include "my_class.hpp"
+
+MIRROR_BRIDGE_MODULE(people,
+    mirror_bridge::bind_class<Person>(m, "Person");
+)
+EOF
+
+# Compile it
+clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+    -I. -fPIC -shared \
+    $(python3-config --includes --ldflags) \
+    my_binding.cpp -o build/people.so
+
+# Use from Python
+python3 << 'EOF'
+import sys
+sys.path.insert(0, 'build')
+import people
+
+# Create a person
+p = people.Person("Alice", 30)
+
+# Access members
+print(f"Name: {p.name}, Age: {p.age}")  # Direct access!
+
+# Call methods
+p.greet()                               # Zero parameters
+year = p.get_birth_year(2024)          # With parameters
+print(f"Born in: {year}")
+
+# Modify members
+p.age = 31
+print(f"Updated age: {p.age}")
+EOF
+```
+
+**Congratulations!** You've created your first binding from scratch.
+
+## What's Next?
+
+### Learn More About Features
+
+Mirror Bridge automatically handles:
+- **Any number of parameters**: Methods can have 0, 1, 5, 10+ parameters
+- **Constructors**: Including parameterized constructors
+- **Overloading**: Multiple methods with the same name but different types
+- **Smart pointers**: `unique_ptr` and `shared_ptr` convert to/from dicts
+- **Containers**: `std::vector`, `std::array` convert to/from lists
+- **Nested classes**: Classes containing other classes
+
+See examples in `tests/e2e/advanced/` for each feature.
+
+### Choose Your Workflow
+
+Three ways to create bindings:
+
+1. **Auto-discovery** (`mirror_bridge_auto`): Point at a directory, binds everything
+   - Best for: Quick prototyping, binding entire libraries
+   - Example: `mirror_bridge_auto src/ --module my_module`
+
+2. **Config file** (`mirror_bridge_generate`): Declarative `.mirror` config
+   - Best for: Production use, version control, selective binding
+   - Example: `mirror_bridge_generate my_module.mirror`
+
+3. **Manual binding** (`mirror_bridge_build`): Write binding `.cpp` yourself
+   - Best for: Custom control, complex scenarios
+   - Example: `mirror_bridge_build my_binding.cpp`
+
+See [TOOLS.md](TOOLS.md) for complete reference.
+
+### Dive Deeper
+
+- **[README.md](README.md)** - Feature overview and examples
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - How it works internally
+- **[TESTING.md](TESTING.md)** - Writing and running tests
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development workflow
+
+## Common Issues
+
+### "fatal error: 'meta' file not found"
+You need to use `clang++` with reflection support. This is provided in the Docker container.
+
+### "undefined symbol" linker errors
+Make sure you're using the reflection compiler flags:
+```bash
+-std=c++2c -freflection -freflection-latest -stdlib=libc++
+```
+
+### Smart pointer compilation issues
+Just bind both the container class and the element type:
+```cpp
+mirror_bridge::bind_class<Data>(m, "Data");
+mirror_bridge::bind_class<Container>(m, "Container");  // Has unique_ptr<Data>
+```
+
+### Need help?
+Check [DEVELOPMENT.md](DEVELOPMENT.md) for troubleshooting and advanced topics.
+
+---
+
+**You're ready to go!** Start binding your C++ code to Python with zero boilerplate.
