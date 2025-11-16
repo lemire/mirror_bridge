@@ -153,9 +153,14 @@ size_mb_med_manual=$(get_size_kb "$BUILD_DIR/medium_mb_manual.so")
 echo -e "${GREEN}${time_mb_med_manual}ms  (${size_mb_med_manual} KB)${NC}"
 
 echo -n "  Mirror Bridge (auto-discovery)..."
-echo -e "${YELLOW}SKIPPED (generates identical code to manual, would show same time)${NC}"
-time_mb_med_auto="$time_mb_med_manual"  # Same generated code = same compile time
-size_mb_med_auto="$size_mb_med_manual"
+rm -f "$BUILD_DIR/medium_mb_auto.so"
+start=$(date +%s%3N)
+cd "$PROJECT_ROOT" && ./mirror_bridge_auto "$BENCHMARK_DIR/compile_time/medium" --module medium_mb_auto > /dev/null 2>&1
+end=$(date +%s%3N)
+time_mb_med_auto=$((end - start))
+size_mb_med_auto=$(get_size_kb "$BUILD_DIR/medium_mb_auto.so")
+cd "$BENCHMARK_DIR/compile_time/medium"
+echo -e "${GREEN}${time_mb_med_auto}ms  (${size_mb_med_auto} KB)${NC}"
 
 echo -n "  pybind11 (manual)...            "
 rm -f "$BUILD_DIR/medium_pb.so"
