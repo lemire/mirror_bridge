@@ -41,3 +41,7 @@ class_hashes.db
 
 # Docker volumes (if using docker-compose)
 .docker-volumes/
+
+# AI guidance (not for public repo)
+claude.md
+CLAUDE.md
