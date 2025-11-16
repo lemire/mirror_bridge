@@ -14,9 +14,9 @@
 
 | Method | Time | Binary Size | vs pybind11 |
 |--------|------|-------------|-------------|
-| **Mirror Bridge (manual)** | 815ms | 43 KB | **2.41x faster** ✓ |
-| **Mirror Bridge (auto)** | 759ms | 124 KB | **2.59x faster** ✓ |
-| pybind11 (manual) | 1,965ms | 207 KB | baseline |
+| **Mirror Bridge (manual)** | 816ms | 43 KB | **2.38x faster** ✓ |
+| **Mirror Bridge (auto)** | 753ms | 124 KB | **2.57x faster** ✓ |
+| pybind11 (manual) | 1,938ms | 207 KB | baseline |
 
 **Winner: Auto-discovery** - fastest compile + zero code
 
@@ -24,26 +24,26 @@
 
 | Method | Time | Binary Size | vs pybind11 |
 |--------|------|-------------|-------------|
-| **Mirror Bridge (manual)** | 2,001ms | 234 KB | **1.85x faster** ✓ |
-| **Mirror Bridge (auto)** | 1,581ms | 618 KB | **2.34x faster** ✓ |
-| pybind11 (manual) | 3,708ms | 593 KB | baseline |
+| **Mirror Bridge (manual)** | 1,978ms | 234 KB | **1.84x faster** ✓ |
+| **Mirror Bridge (auto)** | 1,543ms | 618 KB | **2.36x faster** ✓ |
+| pybind11 (manual) | 3,637ms | 483 KB | baseline |
 
-**Winner: Auto-discovery** - 2.34x faster than pybind11, even faster than manual!
+**Winner: Auto-discovery** - 2.36x faster than pybind11, even faster than manual!
 
 ### Key Insights
 
-1. **Auto-discovery beats manual** (1.58s vs 2.0s for medium)
+1. **Auto-discovery beats manual** (1.54s vs 1.98s for medium)
    - Generates cleaner, more optimized binding code
    - Less template nesting = faster compilation
 
 2. **Mirror Bridge scales better**
    - Simple: 2.5x faster
-   - Medium: 2.3x faster
+   - Medium: 2.0x faster
    - Consistent advantage at all project sizes
 
 3. **Binary size**
    - Simple: 5x smaller (43 KB vs 207 KB)
-   - Medium: comparable (234 KB vs 593 KB)
+   - Medium: 2x smaller (234 KB vs 483 KB)
 
 ## Runtime Performance
 
@@ -51,20 +51,20 @@ All measurements in nanoseconds (lower is better):
 
 | Benchmark | Mirror Bridge | pybind11 | Speedup |
 |-----------|---------------|----------|---------|
-| **Null call** | 35.6 ns | 128.7 ns | **3.61x faster** ✓ |
-| **Add int** | 43.1 ns | 162.0 ns | **3.76x faster** ✓ |
-| **Multiply double** | 44.5 ns | 159.2 ns | **3.58x faster** ✓ |
-| **Concat string** | 65.5 ns | 176.7 ns | **2.70x faster** ✓ |
-| **Get string** | 45.9 ns | 155.8 ns | **3.39x faster** ✓ |
-| **Set string** | 46.5 ns | 146.2 ns | **3.14x faster** ✓ |
-| **Vector append** | 46.3 ns | 146.8 ns | **3.17x faster** ✓ |
-| **Vector get** | 474.8 ns | 604.0 ns | **1.27x faster** ✓ |
-| **Vector set** | 68.4 ns | 213.5 ns | **3.12x faster** ✓ |
-| **Attr get** | 37.0 ns | 132.0 ns | **3.57x faster** ✓ |
-| **Attr set** | 63.7 ns | 177.4 ns | **2.78x faster** ✓ |
-| **Construction** | 47.5 ns | 233.5 ns | **4.92x faster** ✓ |
+| **Null call** | 35.4 ns | 126.7 ns | **3.58x faster** ✓ |
+| **Add int** | 42.8 ns | 159.2 ns | **3.72x faster** ✓ |
+| **Multiply double** | 43.9 ns | 152.8 ns | **3.48x faster** ✓ |
+| **Concat string** | 63.8 ns | 169.9 ns | **2.66x faster** ✓ |
+| **Get string** | 45.6 ns | 151.7 ns | **3.33x faster** ✓ |
+| **Set string** | 46.5 ns | 146.7 ns | **3.16x faster** ✓ |
+| **Vector append** | 45.9 ns | 159.5 ns | **3.47x faster** ✓ |
+| **Vector get** | 469.6 ns | 594.3 ns | **1.27x faster** ✓ |
+| **Vector set** | 69.9 ns | 199.3 ns | **2.85x faster** ✓ |
+| **Attr get** | 36.1 ns | 128.5 ns | **3.56x faster** ✓ |
+| **Attr set** | 64.0 ns | 173.7 ns | **2.71x faster** ✓ |
+| **Construction** | 47.3 ns | 255.9 ns | **5.41x faster** ✓ |
 
-**Average speedup: 3.35x faster at runtime**
+**Average speedup: 3.27x faster at runtime**
 
 ## Developer Experience
 
@@ -73,7 +73,7 @@ All measurements in nanoseconds (lower is better):
 | Project | MB Manual | MB Auto | pybind11 | Reduction |
 |---------|-----------|---------|----------|-----------|
 | **Simple** | 6 lines | 0 lines | 18 lines | 3x (manual), ∞ (auto) |
-| **Medium** | 15 lines | 0 lines | 106 lines | 7x (manual), ∞ (auto) |
+| **Medium** | 15 lines | 0 lines | 103 lines | 7x (manual), ∞ (auto) |
 
 **Auto-discovery requires ZERO lines of binding code!**
 
@@ -99,7 +99,7 @@ mirror_bridge_auto src/ --module my_module
 ## Known Limitations Discovered
 
 1. **Enum support**: Not yet implemented (medium project had to use `int` instead)
-2. **Medium compilation time**: Still takes 1.6-2.0s for 10 classes (acceptable for most projects)
+2. **Medium compilation time**: Still takes 1.5-2.0s for 10 classes (acceptable for most projects)
 3. **Binary size for auto**: Larger due to including all discovered classes
 
 ## Recommendations
