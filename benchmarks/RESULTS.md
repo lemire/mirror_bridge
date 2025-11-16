@@ -5,6 +5,8 @@
 **Benchmark Framework**: ✅ Complete
 **Actual Benchmark Run**: ⏳ Pending (requires `mirror_bridge:benchmarks` Docker image)
 
+⚠️ **Important**: Building the benchmark Docker image takes 30-60 minutes (one-time setup to compile clang-p2996 with reflection support). For quick verification, use the existing `mirror_bridge:full` development image which already has clang-p2996 installed.
+
 The comprehensive benchmark suite is fully implemented and ready to run. This document describes the benchmark methodology and framework.
 
 ## Benchmark Coverage
