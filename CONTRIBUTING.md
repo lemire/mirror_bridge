@@ -272,13 +272,6 @@ git commit -m "fix bug"
 git commit -m "updates"
 ```
 
-Include co-authorship footer:
-```
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-```
-
 ## Architecture Overview
 
 ### Core Components

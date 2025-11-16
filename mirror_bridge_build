@@ -1,0 +1,190 @@
+#!/bin/bash
+# Mirror Bridge Build - Compile a binding file directly
+# Usage: mirror_bridge_build my_bindings.cpp [options]
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Default configuration
+OUTPUT_DIR="build"
+INCLUDE_DIRS=()
+VERBOSE=0
+
+# Help message
+show_help() {
+    cat << EOF
+Mirror Bridge Build - Compile C++ binding files directly
+
+Usage: mirror_bridge_build <binding_file.cpp> [options]
+
+Options:
+  -o, --output-dir DIR    Output directory for .so file (default: build/)
+  -I DIR                  Add include directory
+  -v, --verbose           Show compilation output
+  -h, --help              Show this help message
+
+Example:
+  mirror_bridge_build my_bindings.cpp -I src/ -I include/
+
+The binding file should use MIRROR_BRIDGE_MODULE macro:
+
+  #include "mirror_bridge.hpp"
+  #include "my_class.hpp"
+
+  MIRROR_BRIDGE_MODULE(my_module,
+      mirror_bridge::bind_class<MyClass>(m, "MyClass");
+  )
+
+This generates: build/my_module.so
+
+EOF
+}
+
+# Parse arguments
+BINDING_FILE=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -o|--output-dir)
+            OUTPUT_DIR="$2"
+            shift 2
+            ;;
+        -I)
+            INCLUDE_DIRS+=("-I$2")
+            shift 2
+            ;;
+        -v|--verbose)
+            VERBOSE=1
+            shift
+            ;;
+        -*)
+            echo -e "${RED}Error: Unknown option $1${NC}"
+            show_help
+            exit 1
+            ;;
+        *)
+            if [ -z "$BINDING_FILE" ]; then
+                BINDING_FILE="$1"
+            else
+                echo -e "${RED}Error: Multiple binding files specified${NC}"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Validate input
+if [ -z "$BINDING_FILE" ]; then
+    echo -e "${RED}Error: No binding file specified${NC}"
+    show_help
+    exit 1
+fi
+
+if [ ! -f "$BINDING_FILE" ]; then
+    echo -e "${RED}Error: File not found: $BINDING_FILE${NC}"
+    exit 1
+fi
+
+# Check for reflection compiler
+if ! command -v clang++ &> /dev/null; then
+    echo -e "${RED}Error: clang++ not found${NC}"
+    echo "Mirror Bridge requires the Bloomberg clang-p2996 reflection compiler."
+    exit 1
+fi
+
+# Extract module name from file (remove _binding.cpp or .cpp)
+BASENAME=$(basename "$BINDING_FILE")
+MODULE_NAME="${BASENAME%_binding.cpp}"
+MODULE_NAME="${MODULE_NAME%.cpp}"
+
+# Get absolute paths
+BINDING_FILE=$(realpath "$BINDING_FILE")
+BINDING_DIR=$(dirname "$BINDING_FILE")
+OUTPUT_DIR=$(realpath "$OUTPUT_DIR")
+
+# Find mirror_bridge.hpp (project root)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$SCRIPT_DIR"
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+
+# Set up library path for libc++
+export LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:/usr/local/lib:$LD_LIBRARY_PATH
+
+# Build the binding
+echo -e "${BLUE}Mirror Bridge Build${NC}"
+echo -e "${BLUE}===================${NC}"
+echo ""
+echo -e "Binding file: ${YELLOW}$BINDING_FILE${NC}"
+echo -e "Module name:  ${YELLOW}$MODULE_NAME${NC}"
+echo -e "Output:       ${YELLOW}$OUTPUT_DIR/${MODULE_NAME}.so${NC}"
+echo ""
+
+# Get Python configuration
+PYTHON_INCLUDES=$(python3-config --includes | tr '\n' ' ')
+PYTHON_LDFLAGS=$(python3-config --ldflags | tr '\n' ' ')
+
+# Construct compiler command (for display only)
+COMPILE_CMD="clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+    -I$PROJECT_ROOT -I$BINDING_DIR ${INCLUDE_DIRS[@]} -fPIC -shared \
+    $PYTHON_INCLUDES $PYTHON_LDFLAGS \
+    $BINDING_FILE -o $OUTPUT_DIR/${MODULE_NAME}.so"
+
+if [ $VERBOSE -eq 1 ]; then
+    echo -e "${BLUE}Compile command:${NC}"
+    echo "$COMPILE_CMD"
+    echo ""
+fi
+
+# Compile
+echo -e "${YELLOW}Compiling...${NC}"
+if [ $VERBOSE -eq 1 ]; then
+    clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+        -I"$PROJECT_ROOT" -I"$BINDING_DIR" "${INCLUDE_DIRS[@]}" -fPIC -shared \
+        $PYTHON_INCLUDES $PYTHON_LDFLAGS \
+        "$BINDING_FILE" -o "$OUTPUT_DIR/${MODULE_NAME}.so" 2>&1
+    compile_exit=$?
+else
+    compile_output=$(clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+        -I"$PROJECT_ROOT" -I"$BINDING_DIR" "${INCLUDE_DIRS[@]}" -fPIC -shared \
+        $PYTHON_INCLUDES $PYTHON_LDFLAGS \
+        "$BINDING_FILE" -o "$OUTPUT_DIR/${MODULE_NAME}.so" 2>&1)
+    compile_exit=$?
+
+    # Filter out designated initializer warning
+    filtered_output=$(echo "$compile_output" | grep -v "mixture of designated" || true)
+
+    if [ $compile_exit -ne 0 ]; then
+        echo -e "${RED}✗ Compilation failed${NC}"
+        if [ -n "$filtered_output" ]; then
+            echo "$filtered_output"
+        fi
+        exit 1
+    elif [ -n "$filtered_output" ]; then
+        echo -e "${YELLOW}Warnings:${NC}"
+        echo "$filtered_output"
+    fi
+fi
+
+if [ $compile_exit -ne 0 ]; then
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Built successfully: ${MODULE_NAME}.so${NC}"
+echo ""
+echo -e "${BLUE}Usage from Python:${NC}"
+echo -e "  import sys"
+echo -e "  sys.path.insert(0, '$OUTPUT_DIR')"
+echo -e "  import $MODULE_NAME"
+echo ""
