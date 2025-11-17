@@ -450,7 +450,26 @@ clang++ -std=c++17 -stdlib=libc++ \
     "$BUILD_DIR/nb_stub.o" \
     -o "$BUILD_DIR/bench_nb.so" 2>&1 | grep -v "mixture of designated" || true
 
-echo -e "${YELLOW}Boost.Python skipped (incompatible with libc++)${NC}"
+# Build SWIG runtime module
+swig -c++ -python -o "$BUILD_DIR/swig_binding_wrap.cpp" swig_binding.i 2>/dev/null || true
+clang++ -std=c++20 -stdlib=libc++ \
+    -O3 -DNDEBUG \
+    -fPIC -shared \
+    $(python3-config --includes --ldflags) \
+    "$BUILD_DIR/swig_binding_wrap.cpp" \
+    -o "$BUILD_DIR/_bench_swig.so" 2>&1 | grep -v "mixture of designated" || true
+
+# Try to build Boost.Python module (may fail with libc++)
+if clang++ -std=c++20 -stdlib=libc++ \
+    -O3 -DNDEBUG \
+    -I/usr/include/python3.10 -fPIC -shared \
+    $(python3-config --includes --ldflags) \
+    -lboost_python310 \
+    boost_python_binding.cpp -o "$BUILD_DIR/bench_bp.so" 2>&1 | grep -v "mixture of designated" > /dev/null; then
+    echo "Boost.Python module built successfully"
+else
+    echo -e "${YELLOW}Boost.Python skipped (build failed - likely libc++ incompatibility)${NC}"
+fi
 echo ""
 
 echo "Running runtime benchmarks (this may take a few minutes)..."

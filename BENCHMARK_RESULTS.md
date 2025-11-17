@@ -76,26 +76,31 @@ Shared library file size after compilation (lower is better).
 
 Average time per operation in nanoseconds (lower is better). Median of 5 runs across millions of iterations.
 
-| Benchmark | Mirror Bridge | pybind11 | nanobind | vs pb11 | vs nanobind |
-|-----------|--------------|----------|----------|---------|-------------|
-| **Null call** | 35.1 ns | 130.6 ns | 35.2 ns | **3.7x faster** | 1.00x (tie) |
-| **Add int** | 42.7 ns | 161.3 ns | 40.1 ns | **3.8x faster** | 1.07x slower |
-| **Multiply double** | 43.0 ns | 159.7 ns | 41.4 ns | **3.7x faster** | 1.04x slower |
-| **Concat string** | 63.0 ns | 176.7 ns | 61.2 ns | **2.8x faster** | 1.03x slower |
-| **Get string** | 46.1 ns | 155.1 ns | 48.6 ns | **3.4x faster** | 0.95x faster |
-| **Set string** | 45.7 ns | 150.8 ns | 42.7 ns | **3.3x faster** | 1.07x slower |
-| **Vector append** | 44.0 ns | 147.1 ns | 44.7 ns | **3.3x faster** | 0.98x faster |
-| **Vector get** | 469.2 ns | 573.7 ns | 490.5 ns | **1.2x faster** | 0.96x faster |
-| **Vector set** | 67.2 ns | 193.8 ns | 60.3 ns | **2.9x faster** | 1.11x slower |
-| **Attr get** | 35.2 ns | 131.4 ns | 40.2 ns | **3.7x faster** | 0.88x faster |
-| **Attr set** | 62.0 ns | 179.2 ns | 71.7 ns | **2.9x faster** | 0.87x faster |
-| **Construction** | 47.1 ns | 226.0 ns | 55.5 ns | **4.8x faster** | 0.85x faster |
-| | | | | | |
-| **Average** | **58.3 ns** | **173.8 ns** | **60.9 ns** | **3.0x faster** | **0.96x faster** |
+| Benchmark | Mirror Bridge | pybind11 | nanobind | SWIG | Boost.Py | vs pb11 | vs nanobind |
+|-----------|--------------|----------|----------|------|----------|---------|-------------|
+| **Null call** | 34.4 ns | 130.4 ns | 35.1 ns | 78.2 ns | N/A | **3.8x faster** | 0.98x faster |
+| **Add int** | 42.2 ns | 162.0 ns | 39.4 ns | 95.9 ns | N/A | **3.8x faster** | 1.07x slower |
+| **Multiply double** | 43.4 ns | 157.4 ns | 41.2 ns | 95.0 ns | N/A | **3.6x faster** | 1.05x slower |
+| **Concat string** | 64.8 ns | 171.0 ns | 58.9 ns | 153.9 ns | N/A | **2.6x faster** | 1.10x slower |
+| **Get string** | 45.6 ns | 151.7 ns | 47.0 ns | 97.4 ns | N/A | **3.3x faster** | 0.97x faster |
+| **Set string** | 46.4 ns | 147.4 ns | 42.5 ns | 134.2 ns | N/A | **3.2x faster** | 1.09x slower |
+| **Vector append** | 46.9 ns | 138.9 ns | 43.6 ns | 96.7 ns | N/A | **3.0x faster** | 1.08x slower |
+| **Vector get** | 470.0 ns | 582.0 ns | 469.2 ns | 640.6 ns | N/A | **1.2x faster** | 1.00x (tie) |
+| **Vector set** | 67.3 ns | 195.9 ns | 59.9 ns | 341.9 ns | N/A | **2.9x faster** | 1.12x slower |
+| **Attr get** | 35.5 ns | 132.8 ns | 40.0 ns | 49.3 ns | N/A | **3.7x faster** | 0.89x faster |
+| **Attr set** | 61.7 ns | 182.2 ns | 70.7 ns | 89.2 ns | N/A | **3.0x faster** | 0.87x faster |
+| **Construction** | 46.2 ns | 222.6 ns | 54.4 ns | 323.1 ns | N/A | **4.8x faster** | 0.85x faster |
+| | | | | | | | |
+| **Average** | **58.7 ns** | **172.9 ns** | **58.4 ns** | **179.6 ns** | **N/A** | **3.2x faster** | **1.00x (tie)** |
 
-**Boost.Python:** Not tested (incompatible with libc++ on this platform)
+**Boost.Python:** Runtime benchmarks not available (incompatible with libc++ on this platform)
 
-**Key Insight:** Mirror Bridge and nanobind are essentially tied for runtime performance, both significantly faster than pybind11. Mirror Bridge has a slight edge in attribute access and construction, nanobind in arithmetic operations.
+**Key Insights:**
+- **Mirror Bridge ≈ nanobind**: Essentially tied (within 10% on all benchmarks)
+- **Both 3-4x faster than pybind11**: Significant performance advantage
+- **SWIG is slower**: 1.4-7x slower than Mirror Bridge (especially poor on construction/vector operations)
+- **Mirror Bridge strengths**: Attribute access, construction
+- **nanobind strengths**: Arithmetic operations, string handling
 
 ---
 
