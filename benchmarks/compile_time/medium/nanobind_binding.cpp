@@ -1,8 +1,9 @@
 #include <nanobind/nanobind.h>
-#include <nanobind/stl.h>
+#include <nanobind/stl/string.h>
+#include <nanobind/stl/vector.h>
 #include "classes.hpp"
 
-namespace py = nanobind;
+namespace nb = nanobind;
 
 NB_MODULE(medium_nb, m) {
     nb::class_<Vector3D>(m, "Vector3D")

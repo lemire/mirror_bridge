@@ -137,15 +137,25 @@ measure_compile_time_nanobind() {
     echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
     # Measure compilation time (5 runs for better statistical significance)
+    # nanobind requires compiling stub library sources
+    local nb_src="/usr/local/nanobind/src"
     local times=()
     for i in {1..5}; do
         rm -f "$output_file"
         start=$(date +%s%3N)
-        clang++ -std=c++20 -stdlib=libc++ \
+        clang++ -std=c++17 -stdlib=libc++ \
             -O3 -DNDEBUG \
+            -I/usr/local/nanobind/include \
+            -I/usr/local/nanobind/ext/robin_map/include \
             $include_flags -fPIC -shared \
             $(python3-config --includes --ldflags) \
-            "$binding_file" -o "$output_file" 2>&1 | grep -v "mixture of designated" > /dev/null || true
+            "$binding_file" \
+            "$nb_src/common.cpp" \
+            "$nb_src/error.cpp" \
+            "$nb_src/implicit.cpp" \
+            "$nb_src/nb_func.cpp" \
+            "$nb_src/nb_type.cpp" \
+            -o "$output_file" 2>&1 | grep -v "mixture of designated" > /dev/null || true
         end=$(date +%s%3N)
         times+=($((end - start)))
     done

@@ -1,4 +1,5 @@
 #include <nanobind/nanobind.h>
+#include <nanobind/stl/string.h>
 #include "simple_class.hpp"
 
 namespace nb = nanobind;
