@@ -47,14 +47,13 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include <array>
 #include <type_traits>
 #include <concepts>
 #include <functional>
 #include <memory>
 #include <unordered_map>
-#include <ranges>
-#include <sstream>
+#include <sstream>  // Only used in get_method_type_suffix for complex string building
+#include <cstdio>   // For snprintf in simple repr functions
 
 namespace mirror_bridge {
 
@@ -83,15 +82,16 @@ concept SmartPointer = requires {
       std::is_same_v<std::remove_cvref_t<T>, std::shared_ptr<typename std::remove_cvref_t<T>::element_type>>);
 
 // Concept to identify C++ standard containers (vector, array, list, etc.)
-// Following simdjson: use ranges to detect containers, but exclude strings
+// Optimized: uses begin/end check instead of ranges (avoids heavy <ranges> include)
 template<typename T>
 concept Container =
-    std::ranges::input_range<std::remove_cvref_t<T>> &&
-    !StringLike<T> &&
-    !SmartPointer<T> &&
     requires(std::remove_cvref_t<T> c) {
+        c.begin();
+        c.end();
         typename std::remove_cvref_t<T>::value_type;
-    };
+    } &&
+    !StringLike<T> &&
+    !SmartPointer<T>;
 
 // Concept for enum types
 template<typename T>
@@ -1174,12 +1174,12 @@ PyTypeObject* bind_class(PyObject* module, const char* name, const char* file_ha
     // Store class name statically for repr
     static const char* class_name = name;
 
-    // Generic repr function for all types
+    // Generic repr function for all types (optimized: avoid ostringstream overhead)
     static auto py_repr_func = +[](PyObject* self) -> PyObject* {
         auto* wrapper = reinterpret_cast<PyWrapper<T>*>(self);
-        std::ostringstream oss;
-        oss << "<" << class_name << " object at " << wrapper->cpp_object << ">";
-        return PyUnicode_FromString(oss.str().c_str());
+        char buffer[256];
+        snprintf(buffer, sizeof(buffer), "<%s object at %p>", class_name, static_cast<void*>(wrapper->cpp_object));
+        return PyUnicode_FromString(buffer);
     };
 
     // Define the Python type structure

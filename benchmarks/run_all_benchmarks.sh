@@ -127,18 +127,32 @@ measure_compile_time_pybind11() {
 }
 
 # Function to measure nanobind compile time (uses same optimization flags as pybind11)
+# Note: Pre-compiles stub library once for fair comparison
 measure_compile_time_nanobind() {
     local binding_file=$1
     local output_file=$2
     local include_flags=$3
+
+    # Pre-compile nanobind stub library once (this is what would happen in real projects)
+    local nb_src="/usr/local/nanobind/src"
+    local nb_stub="$BUILD_DIR/nb_stub.o"
+
+    if [ ! -f "$nb_stub" ]; then
+        clang++ -std=c++17 -stdlib=libc++ \
+            -O3 -DNDEBUG \
+            -I/usr/local/nanobind/include \
+            -I/usr/local/nanobind/ext/robin_map/include \
+            $(python3-config --includes) \
+            -fPIC -c \
+            "$nb_src/nb_combined.cpp" -o "$nb_stub" 2>&1 | grep -v "mixture of designated" > /dev/null || true
+    fi
 
     # Clear cache
     sync
     echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
 
     # Measure compilation time (5 runs for better statistical significance)
-    # nanobind requires compiling stub library sources
-    local nb_src="/usr/local/nanobind/src"
+    # Now we only compile the binding file and link against pre-compiled stub
     local times=()
     for i in {1..5}; do
         rm -f "$output_file"
@@ -150,7 +164,7 @@ measure_compile_time_nanobind() {
             $include_flags -fPIC -shared \
             $(python3-config --includes --ldflags) \
             "$binding_file" \
-            "$nb_src/nb_combined.cpp" \
+            "$nb_stub" \
             -o "$output_file" 2>&1 | grep -v "mixture of designated" > /dev/null || true
         end=$(date +%s%3N)
         times+=($((end - start)))
@@ -424,6 +438,17 @@ clang++ -std=c++20 -stdlib=libc++ \
     -I/usr/include/python3.10 -fPIC -shared \
     $(python3-config --includes --ldflags) \
     pybind11_binding.cpp -o "$BUILD_DIR/bench_pb.so" 2>&1 | grep -v "mixture of designated" || true
+
+# Build nanobind runtime module (reuse pre-compiled stub)
+clang++ -std=c++17 -stdlib=libc++ \
+    -O3 -DNDEBUG \
+    -I/usr/local/nanobind/include \
+    -I/usr/local/nanobind/ext/robin_map/include \
+    -fPIC -shared \
+    $(python3-config --includes --ldflags) \
+    nanobind_binding.cpp \
+    "$BUILD_DIR/nb_stub.o" \
+    -o "$BUILD_DIR/bench_nb.so" 2>&1 | grep -v "mixture of designated" || true
 
 echo -e "${YELLOW}Boost.Python skipped (incompatible with libc++)${NC}"
 echo ""

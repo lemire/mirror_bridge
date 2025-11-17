@@ -144,7 +144,7 @@ def format_time(ns):
     else:
         return f"{ns/1_000_000:.1f} ms"
 
-def print_results(results_mb, results_pb, results_bp):
+def print_results(results_mb, results_pb, results_nb, results_bp):
     """Print comparison table"""
     benchmarks = [
         ('Null call', 'null_call'),
@@ -161,23 +161,26 @@ def print_results(results_mb, results_pb, results_bp):
         ('Construction', 'construction'),
     ]
 
-    print("\n" + "="*80)
+    print("\n" + "="*100)
     print(" Runtime Performance Benchmarks (lower is better)")
-    print("="*80)
-    print(f"\n{'Benchmark':<20} {'Mirror Bridge':<15} {'pybind11':<15} {'vs pb11':<10}")
-    print("-"*80)
+    print("="*100)
+    print(f"\n{'Benchmark':<20} {'Mirror Bridge':<15} {'pybind11':<15} {'nanobind':<15} {'vs pb11':<10} {'vs nb':<10}")
+    print("-"*100)
 
     for name, key in benchmarks:
         mb = results_mb[key]
         pb = results_pb[key]
-        ratio = mb / pb
-        marker = "✓" if ratio <= 1.1 else ("⚠" if ratio <= 1.5 else "✗")
+        nb = results_nb[key]
+        ratio_pb = mb / pb
+        ratio_nb = mb / nb
+        marker_pb = "✓" if ratio_pb <= 1.1 else ("⚠" if ratio_pb <= 1.5 else "✗")
+        marker_nb = "✓" if ratio_nb <= 1.1 else ("⚠" if ratio_nb <= 1.5 else "✗")
 
-        print(f"{name:<20} {format_time(mb):<15} {format_time(pb):<15} {ratio:.2f}x {marker}")
+        print(f"{name:<20} {format_time(mb):<15} {format_time(pb):<15} {format_time(nb):<15} {ratio_pb:.2f}x {marker_pb:<5} {ratio_nb:.2f}x {marker_nb}")
 
-    print("\n" + "="*80)
+    print("\n" + "="*100)
     print("Legend: ✓ within 10%  |  ⚠ within 50%  |  ✗ slower than 50%")
-    print("="*80)
+    print("="*100)
 
 if __name__ == '__main__':
     if len(sys.argv) != 2 or sys.argv[1] not in ['run', 'summary']:
@@ -195,6 +198,7 @@ if __name__ == '__main__':
         try:
             import bench_mb
             import bench_pb
+            import bench_nb
         except ImportError as e:
             print(f"Error: Failed to import benchmark modules: {e}")
             print("Please run the compile-time benchmarks first to build the modules.")
@@ -206,10 +210,13 @@ if __name__ == '__main__':
         print("Running pybind11 benchmarks...")
         results_pb = run_benchmarks('bench_pb', bench_pb.BenchmarkClass)
 
+        print("Running nanobind benchmarks...")
+        results_nb = run_benchmarks('bench_nb', bench_nb.BenchmarkClass)
+
         print("Boost.Python skipped (incompatible with libc++)")
         results_bp = {k: 0.0 for k in results_mb.keys()}  # Dummy results
 
-        print_results(results_mb, results_pb, results_bp)
+        print_results(results_mb, results_pb, results_nb, results_bp)
 
         # Save results
         import json
@@ -217,6 +224,7 @@ if __name__ == '__main__':
             json.dump({
                 'mirror_bridge': results_mb,
                 'pybind11': results_pb,
+                'nanobind': results_nb,
                 'boost_python': results_bp
             }, f, indent=2)
         print("\nResults saved to runtime_results.json")
