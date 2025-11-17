@@ -12,12 +12,12 @@ echo ""
 echo "Installing benchmark dependencies and running benchmarks..."
 echo ""
 
-# Use existing development image and install pybind11 + nanobind on-the-fly
+# Use existing development image and install pybind11 + nanobind + SWIG on-the-fly
 docker run --rm -v "$SCRIPT_DIR:/workspace" mirror_bridge:full bash -c "
     apt-get update -qq &&
-    apt-get install -y -qq pybind11-dev libboost-python-dev git cmake > /dev/null 2>&1 &&
-    cd /tmp && git clone --depth 1 https://github.com/wjakob/nanobind.git > /dev/null 2>&1 &&
-    cd nanobind && cmake -S . -B build && cmake --install build --prefix /usr/local > /dev/null 2>&1 &&
+    apt-get install -y -qq pybind11-dev libboost-python-dev git cmake swig > /dev/null 2>&1 &&
+    cd /tmp && git clone --depth 1 --recursive https://github.com/wjakob/nanobind.git > /dev/null 2>&1 &&
+    cd nanobind && cmake -S . -B build > /dev/null 2>&1 && cmake --install build --prefix /usr/local > /dev/null 2>&1 &&
     cd /workspace &&
     ./benchmarks/run_all_benchmarks.sh
 "

@@ -174,6 +174,56 @@ measure_compile_time_nanobind() {
     echo "${median} ${stddev}"
 }
 
+# Function to measure SWIG compile time
+measure_compile_time_swig() {
+    local binding_file=$1
+    local output_file=$2
+    local include_flags=$3
+
+    # Clear cache
+    sync
+    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+
+    # Measure compilation time (5 runs for better statistical significance)
+    local times=()
+    for i in {1..5}; do
+        rm -f "$output_file" "${binding_file%.i}_wrap.cxx"
+        start=$(date +%s%3N)
+        # SWIG generates wrapper code, then compile it
+        swig -c++ -python -o "${binding_file%.i}_wrap.cxx" "$binding_file" 2>/dev/null &&
+        clang++ -std=c++20 -stdlib=libc++ \
+            -O3 -DNDEBUG \
+            $include_flags -fPIC -shared \
+            $(python3-config --includes --ldflags) \
+            "${binding_file%.i}_wrap.cxx" -o "$output_file" 2>&1 | grep -v "mixture of designated" > /dev/null || true
+        end=$(date +%s%3N)
+        times+=($((end - start)))
+    done
+
+    # Calculate median and stddev
+    IFS=$'\n' sorted=($(sort -n <<<"${times[*]}"))
+    local median="${sorted[2]}"
+
+    # Calculate mean for stddev
+    local sum=0
+    for t in "${times[@]}"; do
+        sum=$((sum + t))
+    done
+    local mean=$((sum / 5))
+
+    # Calculate standard deviation
+    local sq_sum=0
+    for t in "${times[@]}"; do
+        local diff=$((t - mean))
+        sq_sum=$((sq_sum + diff * diff))
+    done
+    local variance=$((sq_sum / 5))
+    local stddev=$(awk "BEGIN {printf \"%.0f\", sqrt($variance)}")
+
+    # Return "median±stddev"
+    echo "${median} ${stddev}"
+}
+
 # Function to get file size in KB
 get_size_kb() {
     if [ -f "$1" ]; then
@@ -230,17 +280,30 @@ stddev_nb=${result_nb[1]}
 size_nb=$(get_size_kb "$BUILD_DIR/simple_nb.so")
 echo -e "${GREEN}${time_nb}ms ±${stddev_nb}ms  (${size_nb} KB)${NC}"
 
+echo -n "  SWIG (manual)...                "
+rm -f "$BUILD_DIR/_simple_swig.so"
+result_swig=($(measure_compile_time_swig "swig_binding.i" "$BUILD_DIR/_simple_swig.so" "-I."))
+time_swig=${result_swig[0]}
+stddev_swig=${result_swig[1]}
+size_swig=$(get_size_kb "$BUILD_DIR/_simple_swig.so")
+echo -e "${GREEN}${time_swig}ms ±${stddev_swig}ms  (${size_swig} KB)${NC}"
+
 echo ""
 ratio_manual_pb=$(awk "BEGIN {printf \"%.2f\", $time_pb/$time_mb_manual}")
 ratio_auto_pb=$(awk "BEGIN {printf \"%.2f\", $time_pb/$time_mb_auto}")
 ratio_manual_nb=$(awk "BEGIN {printf \"%.2f\", $time_nb/$time_mb_manual}")
 ratio_auto_nb=$(awk "BEGIN {printf \"%.2f\", $time_nb/$time_mb_auto}")
+ratio_manual_swig=$(awk "BEGIN {printf \"%.2f\", $time_swig/$time_mb_manual}")
+ratio_auto_swig=$(awk "BEGIN {printf \"%.2f\", $time_swig/$time_mb_auto}")
 echo -e "  Speedup vs pybind11:"
 echo -e "    Manual binding:       ${ratio_manual_pb}x faster"
 echo -e "    Auto-discovery:       ${ratio_auto_pb}x faster"
 echo -e "  Speedup vs nanobind:"
 echo -e "    Manual binding:       ${ratio_manual_nb}x faster"
 echo -e "    Auto-discovery:       ${ratio_auto_nb}x faster"
+echo -e "  Speedup vs SWIG:"
+echo -e "    Manual binding:       ${ratio_manual_swig}x faster"
+echo -e "    Auto-discovery:       ${ratio_auto_swig}x faster"
 echo ""
 
 # Medium benchmark
@@ -283,17 +346,30 @@ stddev_nb_med=${result_nb_med[1]}
 size_nb_med=$(get_size_kb "$BUILD_DIR/medium_nb.so")
 echo -e "${GREEN}${time_nb_med}ms ±${stddev_nb_med}ms  (${size_nb_med} KB)${NC}"
 
+echo -n "  SWIG (manual)...                "
+rm -f "$BUILD_DIR/_medium_swig.so"
+result_swig_med=($(measure_compile_time_swig "swig_binding.i" "$BUILD_DIR/_medium_swig.so" "-I."))
+time_swig_med=${result_swig_med[0]}
+stddev_swig_med=${result_swig_med[1]}
+size_swig_med=$(get_size_kb "$BUILD_DIR/_medium_swig.so")
+echo -e "${GREEN}${time_swig_med}ms ±${stddev_swig_med}ms  (${size_swig_med} KB)${NC}"
+
 echo ""
 ratio_manual_med_pb=$(awk "BEGIN {printf \"%.2f\", $time_pb_med/$time_mb_med_manual}")
 ratio_auto_med_pb=$(awk "BEGIN {printf \"%.2f\", $time_pb_med/$time_mb_med_auto}")
 ratio_manual_med_nb=$(awk "BEGIN {printf \"%.2f\", $time_nb_med/$time_mb_med_manual}")
 ratio_auto_med_nb=$(awk "BEGIN {printf \"%.2f\", $time_nb_med/$time_mb_med_auto}")
+ratio_manual_med_swig=$(awk "BEGIN {printf \"%.2f\", $time_swig_med/$time_mb_med_manual}")
+ratio_auto_med_swig=$(awk "BEGIN {printf \"%.2f\", $time_swig_med/$time_mb_med_auto}")
 echo -e "  Speedup vs pybind11:"
 echo -e "    Manual binding:       ${ratio_manual_med_pb}x faster"
 echo -e "    Auto-discovery:       ${ratio_auto_med_pb}x faster"
 echo -e "  Speedup vs nanobind:"
 echo -e "    Manual binding:       ${ratio_manual_med_nb}x faster"
 echo -e "    Auto-discovery:       ${ratio_auto_med_nb}x faster"
+echo -e "  Speedup vs SWIG:"
+echo -e "    Manual binding:       ${ratio_manual_med_swig}x faster"
+echo -e "    Auto-discovery:       ${ratio_auto_med_swig}x faster"
 echo ""
 
 # Developer Experience metrics
