@@ -150,11 +150,7 @@ measure_compile_time_nanobind() {
             $include_flags -fPIC -shared \
             $(python3-config --includes --ldflags) \
             "$binding_file" \
-            "$nb_src/common.cpp" \
-            "$nb_src/error.cpp" \
-            "$nb_src/implicit.cpp" \
-            "$nb_src/nb_func.cpp" \
-            "$nb_src/nb_type.cpp" \
+            "$nb_src/nb_combined.cpp" \
             -o "$output_file" 2>&1 | grep -v "mixture of designated" > /dev/null || true
         end=$(date +%s%3N)
         times+=($((end - start)))
