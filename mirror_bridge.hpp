@@ -1171,11 +1171,14 @@ PyTypeObject* bind_class(PyObject* module, const char* name, const char* file_ha
     // Check if class has parameterized constructors
     constexpr std::size_t ctor_count = get_constructor_count<T>();
 
+    // Store class name statically for repr
+    static const char* class_name = name;
+
     // Generic repr function for all types
     static auto py_repr_func = +[](PyObject* self) -> PyObject* {
         auto* wrapper = reinterpret_cast<PyWrapper<T>*>(self);
         std::ostringstream oss;
-        oss << "<" << name << " object at " << wrapper->cpp_object << ">";
+        oss << "<" << class_name << " object at " << wrapper->cpp_object << ">";
         return PyUnicode_FromString(oss.str().c_str());
     };
 
