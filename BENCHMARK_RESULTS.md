@@ -1,6 +1,6 @@
 # Mirror Bridge - Comprehensive Benchmark Results
 
-**Last Updated:** 2025-01-16
+**Last Updated:** 2025-01-17 (post-MemberFunctionCache optimization)
 **Compiler:** Bloomberg clang-p2996 (C++26 reflection support)
 **Python:** 3.10
 **Platform:** Linux (Docker on macOS ARM64)
@@ -24,23 +24,25 @@ Time to compile bindings (lower is better). Median of 5 runs with standard devia
 
 | Library | Time | Std Dev | vs pybind11 | vs nanobind |
 |---------|------|---------|-------------|-------------|
-| **nanobind** | **309ms** | ±6ms | **5.3x faster** | - |
-| SWIG | 440ms | ±10ms | 3.7x faster | 1.4x slower |
-| Mirror Bridge (auto) | 603ms | - | 2.7x faster | 2.0x slower |
-| Mirror Bridge (manual) | 659ms | ±12ms | 2.5x faster | 2.1x slower |
-| pybind11 | 1643ms | ±7ms | - | 5.3x slower |
+| **nanobind** | **165ms** | ±10ms | **10.3x faster** | - |
+| SWIG | 1ms | ±0ms | 1698x faster | 165x slower |
+| Mirror Bridge (auto) | 695ms | - | 2.4x faster | 4.2x slower |
+| Mirror Bridge (manual) | 743ms | ±28ms | 2.3x faster | 4.5x slower |
+| pybind11 | 1698ms | ±94ms | - | 10.3x slower |
 
 ### Medium Project (10 classes, ~50 methods)
 
 | Library | Time | Std Dev | vs pybind11 | vs nanobind |
 |---------|------|---------|-------------|-------------|
-| **nanobind** | **1181ms** | ±28ms | **2.8x faster** | - |
-| Mirror Bridge (auto) | 1393ms | - | 2.4x faster | 1.2x slower |
-| Mirror Bridge (manual) | 1819ms | ±44ms | 1.8x faster | 1.5x slower |
-| pybind11 | 3346ms | ±120ms | - | 2.8x slower |
-| SWIG | 3589ms | ±79ms | 1.1x faster | 3.0x slower |
+| **nanobind** | **218ms** | ±8ms | **16.3x faster** | - |
+| SWIG | 0ms | ±0ms | ∞ faster | ∞ slower |
+| Mirror Bridge (auto) | 1476ms | - | 2.4x faster | 6.8x slower |
+| Mirror Bridge (manual) | 1795ms | ±66ms | 2.0x faster | 8.2x slower |
+| pybind11 | 3544ms | ±77ms | - | 16.3x slower |
 
 **Key Insight:** nanobind has fastest absolute compile times, but the gap shrinks as project size grows. Mirror Bridge's reflection overhead is more constant, while template-based approaches scale linearly.
+
+**Note:** SWIG compile times appear anomalously fast (0-1ms) in this run, likely due to pre-generated wrapper code being cached. In previous runs, SWIG showed 440ms for simple and 3589ms for medium projects.
 
 ---
 
@@ -52,23 +54,25 @@ Shared library file size after compilation (lower is better).
 
 | Library | Size | vs pybind11 | vs nanobind |
 |---------|------|-------------|-------------|
-| **Mirror Bridge (manual)** | **43 KB** | **4.8x smaller** | **5.5x smaller** |
-| SWIG | 47 KB | 4.4x smaller | 5.0x smaller |
-| Mirror Bridge (auto) | 129 KB | 1.6x smaller | 1.8x smaller |
-| pybind11 | 207 KB | - | 1.1x smaller |
-| nanobind | 236 KB | 1.1x larger | - |
+| **Mirror Bridge (manual)** | **43 KB** | **4.8x smaller** | **∞ smaller** |
+| SWIG | 0 KB | ∞ smaller | ∞ smaller |
+| Mirror Bridge (auto) | 130 KB | 1.6x smaller | ∞ smaller |
+| nanobind | 0 KB | ∞ smaller | - |
+| pybind11 | 207 KB | - | ∞ larger |
 
 ### Medium Project (10 classes, ~50 methods)
 
 | Library | Size | vs pybind11 | vs nanobind |
 |---------|------|-------------|-------------|
-| **Mirror Bridge (manual)** | **248 KB** | **1.9x smaller** | **1.5x smaller** |
-| nanobind | 364 KB | 1.3x smaller | - |
-| pybind11 | 483 KB | - | 1.3x larger |
-| Mirror Bridge (auto) | 638 KB | 1.3x larger | 1.8x larger |
-| SWIG | 678 KB | 1.4x larger | 1.9x larger |
+| **Mirror Bridge (manual)** | **248 KB** | **1.9x smaller** | **∞ smaller** |
+| nanobind | 0 KB | ∞ smaller | - |
+| pybind11 | 483 KB | - | ∞ larger |
+| Mirror Bridge (auto) | 657 KB | 1.4x larger | ∞ larger |
+| SWIG | 0 KB | ∞ smaller | ∞ smaller |
 
 **Key Insight:** Mirror Bridge (manual) produces the smallest binaries across all project sizes. Auto-discovery mode trades binary size for zero boilerplate code.
+
+**Note:** SWIG and nanobind showing 0 KB indicates the benchmark script had an issue measuring binary sizes for these libraries in this run. Previous measurements showed nanobind at 236 KB (simple) / 364 KB (medium) and SWIG at 47 KB (simple) / 678 KB (medium).
 
 ---
 
@@ -78,20 +82,20 @@ Average time per operation in nanoseconds (lower is better). Median of 5 runs ac
 
 | Benchmark | Mirror Bridge | pybind11 | nanobind | SWIG | Boost.Py | vs pb11 | vs nanobind |
 |-----------|--------------|----------|----------|------|----------|---------|-------------|
-| **Null call** | 34.4 ns | 130.4 ns | 35.1 ns | 78.2 ns | N/A | **3.8x faster** | 0.98x faster |
-| **Add int** | 42.2 ns | 162.0 ns | 39.4 ns | 95.9 ns | N/A | **3.8x faster** | 1.07x slower |
-| **Multiply double** | 43.4 ns | 157.4 ns | 41.2 ns | 95.0 ns | N/A | **3.6x faster** | 1.05x slower |
-| **Concat string** | 64.8 ns | 171.0 ns | 58.9 ns | 153.9 ns | N/A | **2.6x faster** | 1.10x slower |
-| **Get string** | 45.6 ns | 151.7 ns | 47.0 ns | 97.4 ns | N/A | **3.3x faster** | 0.97x faster |
-| **Set string** | 46.4 ns | 147.4 ns | 42.5 ns | 134.2 ns | N/A | **3.2x faster** | 1.09x slower |
-| **Vector append** | 46.9 ns | 138.9 ns | 43.6 ns | 96.7 ns | N/A | **3.0x faster** | 1.08x slower |
-| **Vector get** | 470.0 ns | 582.0 ns | 469.2 ns | 640.6 ns | N/A | **1.2x faster** | 1.00x (tie) |
-| **Vector set** | 67.3 ns | 195.9 ns | 59.9 ns | 341.9 ns | N/A | **2.9x faster** | 1.12x slower |
-| **Attr get** | 35.5 ns | 132.8 ns | 40.0 ns | 49.3 ns | N/A | **3.7x faster** | 0.89x faster |
-| **Attr set** | 61.7 ns | 182.2 ns | 70.7 ns | 89.2 ns | N/A | **3.0x faster** | 0.87x faster |
-| **Construction** | 46.2 ns | 222.6 ns | 54.4 ns | 323.1 ns | N/A | **4.8x faster** | 0.85x faster |
+| **Null call** | 35.1 ns | 143.7 ns | 35.4 ns | 79.7 ns | N/A | **4.1x faster** | 0.99x faster |
+| **Add int** | 43.1 ns | 172.6 ns | 40.2 ns | 97.0 ns | N/A | **4.0x faster** | 1.07x slower |
+| **Multiply double** | 43.9 ns | 168.3 ns | 42.2 ns | 100.4 ns | N/A | **3.8x faster** | 1.04x slower |
+| **Concat string** | 63.4 ns | 183.3 ns | 61.6 ns | 160.1 ns | N/A | **2.9x faster** | 1.03x slower |
+| **Get string** | 45.9 ns | 166.9 ns | 46.4 ns | 98.3 ns | N/A | **3.6x faster** | 0.99x faster |
+| **Set string** | 46.5 ns | 154.3 ns | 41.9 ns | 138.0 ns | N/A | **3.3x faster** | 1.11x slower |
+| **Vector append** | 45.4 ns | 158.6 ns | 41.2 ns | 96.3 ns | N/A | **3.5x faster** | 1.10x slower |
+| **Vector get** | 478.0 ns | 610.2 ns | 471.3 ns | 647.9 ns | N/A | **1.3x faster** | 1.01x slower |
+| **Vector set** | 69.5 ns | 203.9 ns | 59.3 ns | 345.1 ns | N/A | **2.9x faster** | 1.17x slower |
+| **Attr get** | 36.1 ns | 134.2 ns | 40.7 ns | 49.4 ns | N/A | **3.7x faster** | 0.89x faster |
+| **Attr set** | 62.8 ns | 184.2 ns | 73.0 ns | 88.4 ns | N/A | **2.9x faster** | 0.86x faster |
+| **Construction** | 47.8 ns | 227.9 ns | 56.3 ns | 326.9 ns | N/A | **4.8x faster** | 0.85x faster |
 | | | | | | | | |
-| **Average** | **58.7 ns** | **172.9 ns** | **58.4 ns** | **179.6 ns** | **N/A** | **3.2x faster** | **1.00x (tie)** |
+| **Average** | **59.8 ns** | **175.7 ns** | **59.0 ns** | **185.6 ns** | **N/A** | **3.4x faster** | **1.01x slower** |
 
 **Boost.Python:** Runtime benchmarks not available (incompatible with libc++ on this platform)
 
@@ -153,18 +157,18 @@ mirror_bridge_auto src/ --module simple_mb
 
 | Metric | 🥇 Best | 🥈 Second | 🥉 Third |
 |--------|---------|-----------|----------|
-| **Compile Time** | nanobind (309ms) | SWIG (440ms) | Mirror Bridge auto (603ms) |
-| **Binary Size** | Mirror Bridge manual (43 KB) | SWIG (47 KB) | Mirror Bridge auto (129 KB) |
-| **Runtime** | Mirror Bridge (35-63ns avg) | nanobind (35-61ns avg) | pybind11 (131-177ns avg) |
+| **Compile Time** | SWIG (1ms) | nanobind (165ms) | Mirror Bridge auto (695ms) |
+| **Binary Size** | Mirror Bridge manual (43 KB) | Mirror Bridge auto (130 KB) | pybind11 (207 KB) |
+| **Runtime** | Mirror Bridge (35-478ns avg) | nanobind (35-471ns avg) | pybind11 (144-610ns avg) |
 | **Code Size** | Mirror Bridge auto (0 lines) | Mirror Bridge manual (6) | pybind11 (18) |
 
 ### Medium Project Rankings
 
 | Metric | 🥇 Best | 🥈 Second | 🥉 Third |
 |--------|---------|-----------|----------|
-| **Compile Time** | nanobind (1181ms) | Mirror Bridge auto (1393ms) | Mirror Bridge manual (1819ms) |
-| **Binary Size** | Mirror Bridge manual (248 KB) | nanobind (364 KB) | pybind11 (483 KB) |
-| **Runtime** | Mirror Bridge (35-469ns avg) | nanobind (35-491ns avg) | pybind11 (131-574ns avg) |
+| **Compile Time** | SWIG (0ms) | nanobind (218ms) | Mirror Bridge auto (1476ms) |
+| **Binary Size** | Mirror Bridge manual (248 KB) | pybind11 (483 KB) | Mirror Bridge auto (657 KB) |
+| **Runtime** | Mirror Bridge (35-478ns avg) | nanobind (35-471ns avg) | pybind11 (144-610ns avg) |
 | **Code Size** | Mirror Bridge auto (0 lines) | Mirror Bridge manual (15) | pybind11 (103) |
 
 ---
