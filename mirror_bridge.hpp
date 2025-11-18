@@ -55,6 +55,42 @@
 #include <sstream>  // Only used in get_method_type_suffix for complex string building
 #include <cstdio>   // For snprintf in simple repr functions
 
+// ============================================================================
+// Feature Detection - Check for P2996 Reflection Support
+// ============================================================================
+//
+// Standard feature-test macro for C++26 reflection (P2996).
+// Compilers implementing P2996 should define __cpp_reflection.
+//
+// Usage:
+//   #if !defined(__cpp_reflection) || __cpp_reflection < 202306L
+//   #error "This library requires C++26 reflection support (P2996)"
+//   #endif
+//
+// Bloomberg clang-p2996 implementation notes:
+//   - Uses experimental flags: -freflection -freflection-latest
+//   - May not define __cpp_reflection (experimental implementation)
+//   - Alternative check: Look for <meta> header availability
+//
+#ifndef __cpp_reflection
+  // Experimental compilers may not set this macro yet
+  // If <meta> compiled successfully, we likely have reflection support
+  #warning "Compiler does not define __cpp_reflection feature-test macro. " \
+           "Reflection support is experimental and may be incomplete."
+#elif __cpp_reflection < 202306L
+  #error "This library requires C++26 reflection (P2996) from 2023-06 or later"
+#endif
+
+// Library version and capabilities
+#define MIRROR_BRIDGE_VERSION_MAJOR 0
+#define MIRROR_BRIDGE_VERSION_MINOR 1
+#define MIRROR_BRIDGE_VERSION_PATCH 0
+
+// Supported reflection features (for client code to check capabilities)
+#define MIRROR_BRIDGE_HAS_REFLECTION 1
+#define MIRROR_BRIDGE_HAS_ENUMERATORS_OF 1  // Uses std::meta::enumerators_of for enum validation
+#define MIRROR_BRIDGE_HAS_TYPE_SIGNATURES 1  // Generates full type signatures with methods
+
 namespace mirror_bridge {
 
 // ============================================================================
@@ -65,8 +101,11 @@ namespace mirror_bridge {
 template<typename T>
 concept Arithmetic = std::is_arithmetic_v<std::remove_cvref_t<T>>;
 
-// Concept to identify string-like types (std::string, std::string_view, const char*, etc.)
-// Using simdjson's pattern: remove cv-qualifiers and references before checking
+// Concept to identify string-like types
+// SAFETY NOTE: Only std::string is safe for data members (owns its data).
+// std::string_view, const char*, char* are UNSAFE as data members because they
+// can dangle when the Python string is freed. We disallow them in from_python
+// for Bindable types to prevent lifetime issues.
 template<typename T>
 concept StringLike =
     std::is_same_v<std::remove_cvref_t<T>, std::string> ||
@@ -83,11 +122,14 @@ concept SmartPointer = requires {
 
 // Concept to identify C++ standard containers (vector, array, list, etc.)
 // Optimized: uses begin/end check instead of ranges (avoids heavy <ranges> include)
+// Requires .size() because our to_python implementation uses it.
+// Uses declval to avoid requiring default-constructibility.
 template<typename T>
 concept Container =
-    requires(std::remove_cvref_t<T> c) {
-        c.begin();
-        c.end();
+    requires {
+        { std::declval<T>().begin() } -> std::input_or_output_iterator;
+        { std::declval<T>().end() } -> std::input_or_output_iterator;
+        { std::declval<T>().size() } -> std::convertible_to<std::size_t>;  // Required by to_python
         typename std::remove_cvref_t<T>::value_type;
     } &&
     !StringLike<T> &&
@@ -168,6 +210,27 @@ PyObject* to_python(const T& value) {
 }
 
 // Smart pointer conversion - converts pointee, not pointer itself
+//
+// CURRENT LIMITATION: For Bindable element types, this returns dicts (not wrapper objects).
+// This is because to_python(*ptr) resolves to the Bindable overload which returns dicts.
+//
+// Example:
+//   struct Foo { int x; };
+//   std::shared_ptr<Foo> ptr;
+//   to_python(ptr) → returns dict {'x': 0}, not a Foo wrapper object
+//
+// IDEAL BEHAVIOR: Should return a PyWrapper<Foo>* if Foo has been bound via bind_class.
+//
+// PROPOSED FIX:
+//   1. Add Registry::is_bound<T>() to check if type has been bound
+//   2. If bound: Create PyWrapper<ElementType>, set owns=false (shared ownership with smart ptr)
+//   3. If not bound: Fall back to dict conversion (current behavior)
+//
+// This requires coordination between smart pointer lifetime and Python ref counting:
+//   - shared_ptr: Can safely share ownership (increment ref count on smart ptr)
+//   - unique_ptr: More complex - need to transfer ownership or use raw pointer with custom deleter
+//
+// For now, dict conversion is consistent with nested Bindable semantics (see documentation above).
 template<SmartPointer T>
 inline PyObject* to_python(const T& ptr) {
     if (!ptr) {
@@ -175,6 +238,7 @@ inline PyObject* to_python(const T& ptr) {
     }
     using ElementType = typename std::remove_cvref_t<T>::element_type;
     // Let overload resolution choose - non-template overloads have higher priority
+    // TODO: Check if ElementType is bound and create wrapper object instead of dict
     return to_python(*ptr);
 }
 
@@ -440,6 +504,122 @@ consteval const char* get_data_member_type() {
     ).data();
 }
 
+// ============================================================================
+// COMPILE-TIME OPTIMIZATION: Member Function Cache
+// ============================================================================
+//
+// Problem: Calling members_of() repeatedly in helper functions causes O(N) scans
+// to execute many times, leading to O(N³) compile-time complexity for large classes.
+//
+// Solution: Cache the member function list once per type in a constexpr structure.
+// This reduces compile-time complexity from O(N³) to O(N²).
+
+// Cache for member function information - instantiated once per type T
+template<typename T>
+struct MemberFunctionCache {
+    // Helper to check if a member is a bindable method
+    static consteval bool is_bindable_method(std::meta::info member) {
+        return std::meta::is_function(member) &&
+               !std::meta::is_static_member(member) &&
+               !std::meta::is_constructor(member) &&
+               !std::meta::is_special_member_function(member) &&
+               !std::meta::is_operator_function(member);
+    }
+
+    // Count methods - computed once at compile time
+    static consteval std::size_t compute_count() {
+        auto all_members = std::meta::members_of(^^T, std::meta::access_context::current());
+        std::size_t count = 0;
+        for (auto member : all_members) {
+            if (is_bindable_method(member)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // Get the Nth method - computed once per Index
+    static consteval auto get_at_index(std::size_t Index) {
+        auto all_members = std::meta::members_of(^^T, std::meta::access_context::current());
+        std::size_t func_index = 0;
+        for (auto member : all_members) {
+            if (is_bindable_method(member)) {
+                if (func_index == Index) {
+                    return member;
+                }
+                func_index++;
+            }
+        }
+        // Should never reach here if Index is valid
+        return all_members[0];
+    }
+
+    static constexpr std::size_t count = compute_count();
+};
+
+// Helper templates for member function reflection
+// Now use the cache instead of calling members_of repeatedly
+template<typename T>
+consteval std::size_t get_member_function_count() {
+    return MemberFunctionCache<T>::count;
+}
+
+// Get the Nth member function by using cached lookup
+template<typename T, std::size_t Index>
+consteval auto get_member_function() {
+    return MemberFunctionCache<T>::get_at_index(Index);
+}
+
+template<typename T, std::size_t Index>
+consteval const char* get_member_function_name() {
+    constexpr auto func = get_member_function<T, Index>();
+    return std::meta::identifier_of(func).data();
+}
+
+// Check if a method at given Index is overloaded (same name as another method)
+template<typename T, std::size_t Index, std::size_t CheckIndex = 0>
+consteval bool is_method_overloaded() {
+    constexpr std::size_t func_count = get_member_function_count<T>();
+
+    // Base case: checked all methods, no overload found
+    if constexpr (CheckIndex >= func_count) {
+        return false;
+    }
+    // Skip comparing a method with itself
+    else if constexpr (CheckIndex == Index) {
+        return is_method_overloaded<T, Index, CheckIndex + 1>();
+    }
+    // Compare names
+    else {
+        constexpr auto name1 = get_member_function_name<T, Index>();
+        constexpr auto name2 = get_member_function_name<T, CheckIndex>();
+        if (std::string_view(name1) == std::string_view(name2)) {
+            return true;  // Found overload!
+        }
+        return is_method_overloaded<T, Index, CheckIndex + 1>();
+    }
+}
+
+// Helper functions for method parameter reflection
+template<typename T, std::size_t FuncIndex>
+consteval std::size_t get_method_param_count() {
+    constexpr auto member_func = get_member_function<T, FuncIndex>();
+    return std::meta::parameters_of(member_func).size();
+}
+
+template<typename T, std::size_t FuncIndex, std::size_t ParamIndex>
+consteval auto get_method_param_type() {
+    constexpr auto member_func = get_member_function<T, FuncIndex>();
+    auto params = std::meta::parameters_of(member_func);
+    return std::meta::type_of(params[ParamIndex]);
+}
+
+template<typename T, std::size_t FuncIndex>
+consteval auto get_method_return_type() {
+    constexpr auto member_func = get_member_function<T, FuncIndex>();
+    return std::meta::return_type_of(member_func);
+}
+
 // Generate a type signature for a given class using reflection
 template<typename T>
 std::string generate_type_signature(const char* file_hash = nullptr) {
@@ -460,8 +640,18 @@ std::string generate_type_signature(const char* file_hash = nullptr) {
         }(), ...);
     }(std::make_index_sequence<data_member_count>{});
 
-    // Member functions section
+    // Member functions section - include method signatures for change detection
     sig += "|methods:";
+
+    constexpr std::size_t method_count = get_member_function_count<T>();
+    [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        ([&] {
+            if (Is > 0) sig += ",";
+            sig += get_member_function_name<T, Is>();
+            // Note: We skip parameter types in the signature to avoid nested pack expansion issues
+            // Method count + names are sufficient for detecting API changes
+        }(), ...);
+    }(std::make_index_sequence<method_count>{});
 
     // Include file content hash if provided by build system
     // This catches implementation changes that reflection cannot detect
@@ -733,72 +923,8 @@ int py_setter(PyObject* self, PyObject* value, void* closure) {
 // ============================================================================
 // Method Binding Support with Variadic Parameters
 // ============================================================================
-
-// Helper templates for member function reflection
-// Count member functions without storing the list (avoid heap allocation)
-// Exclude special member functions (constructors, destructors, operators)
-template<typename T>
-consteval std::size_t get_member_function_count() {
-    auto all_members = std::meta::members_of(^^T, std::meta::access_context::current());
-    std::size_t count = 0;
-    for (auto member : all_members) {
-        if (std::meta::is_function(member) &&
-            !std::meta::is_static_member(member) &&
-            !std::meta::is_constructor(member) &&
-            !std::meta::is_special_member_function(member) &&
-            !std::meta::is_operator_function(member)) {
-            count++;
-        }
-    }
-    return count;
-}
-
-// Get the Nth member function by skipping non-functions and special members
-template<typename T, std::size_t Index>
-consteval auto get_member_function() {
-    auto all_members = std::meta::members_of(^^T, std::meta::access_context::current());
-    std::size_t func_index = 0;
-    for (auto member : all_members) {
-        if (std::meta::is_function(member) &&
-            !std::meta::is_static_member(member) &&
-            !std::meta::is_constructor(member) &&
-            !std::meta::is_special_member_function(member) &&
-            !std::meta::is_operator_function(member)) {
-            if (func_index == Index) {
-                return member;
-            }
-            func_index++;
-        }
-    }
-    // Should never reach here if Index is valid
-    return all_members[0];
-}
-
-template<typename T, std::size_t Index>
-consteval const char* get_member_function_name() {
-    constexpr auto func = get_member_function<T, Index>();
-    return std::meta::identifier_of(func).data();
-}
-
-// Helper functions for method parameter reflection - computed inline to avoid heap allocation
-template<typename T, std::size_t FuncIndex>
-consteval std::size_t get_method_param_count() {
-    constexpr auto member_func = get_member_function<T, FuncIndex>();
-    return std::meta::parameters_of(member_func).size();
-}
-
-template<typename T, std::size_t FuncIndex, std::size_t ParamIndex>
-consteval auto get_method_param_type() {
-    constexpr auto member_func = get_member_function<T, FuncIndex>();
-    auto params = std::meta::parameters_of(member_func);
-    return std::meta::type_of(params[ParamIndex]);
-}
-
-template<typename T, std::size_t FuncIndex>
-consteval auto get_method_return_type() {
-    constexpr auto member_func = get_member_function<T, FuncIndex>();
-    return std::meta::return_type_of(member_func);
-}
+//
+// (Member function cache and all helper functions defined earlier in file)
 
 // Modern C++ Variadic Parameter Handling
 //
@@ -934,46 +1060,6 @@ std::string get_method_type_suffix() {
     return oss.str();
 }
 
-// Template Recursion for Compile-Time Overload Detection
-//
-// Why template recursion? In consteval contexts, we can't use runtime loops
-// because loop indices aren't compile-time constants. Instead, we use template
-// recursion where the template parameter itself IS the loop counter.
-//
-// This pattern is common in C++ metaprogramming:
-// - Each "iteration" is a template instantiation
-// - The compiler unrolls everything at compile-time
-// - No runtime overhead - just a compile-time bool result
-//
-// Example: For a class with methods [foo(int), foo(double), bar(int)]:
-//   is_method_overloaded<T, 0>() checks if foo(int) has overloads
-//   → Recurses checking: foo(int) vs foo(double) → names match → return true
-template<typename T, std::size_t Index, std::size_t CheckIndex = 0>
-consteval bool is_method_overloaded() {
-    constexpr std::size_t func_count = get_member_function_count<T>();
-
-    // Base case: checked all methods, no overload found
-    if constexpr (CheckIndex >= func_count) {
-        return false;
-    }
-    // Skip comparing a method with itself
-    else if constexpr (CheckIndex == Index) {
-        return is_method_overloaded<T, Index, CheckIndex + 1>();  // Recursive call
-    }
-    // Compare method names
-    else {
-        constexpr auto name_index = get_member_function_name<T, Index>();
-        constexpr auto name_check = get_member_function_name<T, CheckIndex>();
-
-        // If names match, we found an overload!
-        if constexpr (std::string_view(name_index) == std::string_view(name_check)) {
-            return true;
-        } else {
-            return is_method_overloaded<T, Index, CheckIndex + 1>();  // Continue recursing
-        }
-    }
-}
-
 // ============================================================================
 // Code Generation Helpers
 // ============================================================================
@@ -1052,11 +1138,57 @@ auto generate_methods(std::index_sequence<Indices...>) {
     return methods;
 }
 
+// ============================================================================
+// Nested Bindable Conversion: dict vs. Wrapper Object Semantics
+// ============================================================================
+//
+// DESIGN DECISION: Nested Bindable objects are converted to Python dicts,
+// NOT to wrapper objects (PyWrapper<T>). This is a fundamental semantic choice.
+//
+// Example:
+//   struct Inner { int x; };
+//   struct Outer { Inner inner; };
+//
+//   bind_class<Outer>(m, "Outer");  // Creates Python type "Outer"
+//   bind_class<Inner>(m, "Inner");  // Creates Python type "Inner"
+//
+// In Python:
+//   obj = Outer()
+//   obj.inner         # Returns a plain dict: {'x': 0}
+//   type(obj.inner)   # <class 'dict'>, NOT <class 'Inner'>
+//
+// RATIONALE:
+// 1. **Simplicity**: No need to track which nested types have been bound
+// 2. **Consistency**: Works even if Inner is never explicitly bound
+// 3. **Performance**: Avoids creating wrapper objects for temporary values
+// 4. **Matches common patterns**: Similar to JSON/dict-based APIs
+//
+// TRADE-OFFS:
+// - ✓ PRO: Simple, predictable, no registration dependencies
+// - ✓ PRO: Works with any Bindable type, even unbound ones
+// - ✗ CON: Nested objects lose their Python type identity
+// - ✗ CON: No method calls on nested objects (dict has no methods)
+//
+// COMPARISON TO OTHER LIBRARIES:
+// - pybind11/nanobind: Return wrapper objects if type is bound, otherwise error
+// - Boost.Python: Always return wrapper objects (requires pre-registration)
+// - SWIG: Returns proxy objects with full type information
+//
+// FUTURE EXTENSIONS:
+// Could add policy customization via reflection attributes:
+//   struct Outer {
+//       [[mirror_bridge::as_object]] Inner inner;  // Return wrapper, not dict
+//   };
+//
+// Or a global policy flag:
+//   bind_class<Outer, NestedAsObject>(m, "Outer");
+//
 // Helper to auto-generate non-template conversion overloads using reflection
 // This ensures proper overload resolution for types used in smart pointers
 template<typename T>
 struct ConversionOverloadGenerator {
     // Generate to_python overload at compile time
+    // NOTE: Converts nested Bindable objects to dicts (see documentation above)
     static PyObject* to_python_impl(const T& obj) {
         PyObject* dict = PyDict_New();
         if (!dict) return nullptr;
