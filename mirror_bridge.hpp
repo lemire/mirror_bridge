@@ -52,7 +52,6 @@
 #include <functional>
 #include <memory>
 #include <unordered_map>
-#include <sstream>  // Only used in get_method_type_suffix for complex string building
 #include <cstdio>   // For snprintf in simple repr functions
 
 // ============================================================================
@@ -392,35 +391,6 @@ bool from_python(PyObject* obj, T& container) {
     return true;
 }
 
-// Helper to get member count for nested bindable classes
-template<typename T>
-consteval std::size_t get_nested_member_count() {
-    return std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current()).size();
-}
-
-// Helper to get nested member at index
-template<typename T, std::size_t Index>
-consteval auto get_nested_member() {
-    return std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current())[Index];
-}
-
-// Helper to get nested member name at index
-template<typename T, std::size_t Index>
-consteval const char* get_nested_member_name() {
-    return std::meta::identifier_of(
-        std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current())[Index]
-    ).data();
-}
-
-// Helper to get nested member type at index
-template<typename T, std::size_t Index>
-using NestedMemberType = typename [:std::meta::type_of(
-    std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current())[Index]
-):];
-
-// Note: Conversion functions for nested bindable classes are now auto-generated
-// via ConversionOverloadGenerator and the template overloads below
-
 // ============================================================================
 // Class Metadata and Registry
 // ============================================================================
@@ -487,32 +457,75 @@ private:
 // Reflection-Based Binding Generator
 // ============================================================================
 
-// Helper templates for type signature generation - use immediate evaluation
+// ============================================================================
+// COMPILE-TIME OPTIMIZATION: Data Member and Function Caches
+// ============================================================================
+//
+// Problem: Calling nonstatic_data_members_of() and members_of() repeatedly in
+// helper functions causes O(N) scans to execute many times, leading to O(N³)
+// compile-time complexity for large classes.
+//
+// Solution: Cache both data members and member functions once per type in
+// constexpr structures. This reduces compile-time complexity from O(N³) to O(N²).
+
+// Cache for data member information - instantiated once per type T
+template<typename T>
+struct DataMemberCache {
+    // Count data members - computed once at compile time
+    static consteval std::size_t compute_count() {
+        return std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current()).size();
+    }
+
+    // Get the Nth data member - computed once per Index
+    static consteval auto get_at_index(std::size_t Index) {
+        return std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current())[Index];
+    }
+
+    static constexpr std::size_t count = compute_count();
+};
+
+// Helper templates for data member reflection - use the cache
+template<typename T>
+consteval std::size_t get_data_member_count() {
+    return DataMemberCache<T>::count;
+}
+
+template<typename T, std::size_t Index>
+consteval auto get_data_member() {
+    return DataMemberCache<T>::get_at_index(Index);
+}
+
+// Helper templates for data member type info - use cache for efficiency
 template<typename T, std::size_t Index>
 consteval const char* get_data_member_name() {
-    return std::meta::identifier_of(
-        std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current())[Index]
-    ).data();
+    return std::meta::identifier_of(get_data_member<T, Index>()).data();
 }
 
 template<typename T, std::size_t Index>
 consteval const char* get_data_member_type() {
     return std::meta::display_string_of(
-        std::meta::type_of(
-            std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current())[Index]
-        )
+        std::meta::type_of(get_data_member<T, Index>())
     ).data();
 }
 
-// ============================================================================
-// COMPILE-TIME OPTIMIZATION: Member Function Cache
-// ============================================================================
-//
-// Problem: Calling members_of() repeatedly in helper functions causes O(N) scans
-// to execute many times, leading to O(N³) compile-time complexity for large classes.
-//
-// Solution: Cache the member function list once per type in a constexpr structure.
-// This reduces compile-time complexity from O(N³) to O(N²).
+// Helper aliases for nested bindable classes - use cache
+template<typename T>
+consteval std::size_t get_nested_member_count() {
+    return get_data_member_count<T>();
+}
+
+template<typename T, std::size_t Index>
+consteval auto get_nested_member() {
+    return get_data_member<T, Index>();
+}
+
+template<typename T, std::size_t Index>
+consteval const char* get_nested_member_name() {
+    return std::meta::identifier_of(get_data_member<T, Index>()).data();
+}
+
+template<typename T, std::size_t Index>
+using NestedMemberType = typename [:std::meta::type_of(get_data_member<T, Index>()):];
 
 // Cache for member function information - instantiated once per type T
 template<typename T>
@@ -626,10 +639,8 @@ std::string generate_type_signature(const char* file_hash = nullptr) {
     std::string sig{std::meta::identifier_of(^^T)};
     sig += "{";
 
-    // Data members section - get size at compile-time
-    constexpr std::size_t data_member_count = []() consteval {
-        return std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current()).size();
-    }();
+    // Data members section - use cached count
+    constexpr std::size_t data_member_count = get_data_member_count<T>();
 
     [&]<std::size_t... Is>(std::index_sequence<Is...>) {
         ([&] {
@@ -844,10 +855,10 @@ PyObject* py_new(PyTypeObject* type, PyObject* args, PyObject* kwds) {
 // Member Access Binding
 // ============================================================================
 
-// Helper to get member reflection info at compile-time using index
+// Helper to get member reflection info at compile-time using index - use cache
 template<typename T, std::size_t Index>
 consteval auto get_member_info() {
-    return std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current())[Index];
+    return get_data_member<T, Index>();
 }
 
 // ============================================================================
@@ -1028,6 +1039,7 @@ consteval auto generate_mangled_method_name() {
 }
 
 // Helper to generate type suffix for mangling
+// Uses simple string concatenation instead of ostringstream for faster compilation
 template<typename T, std::size_t FuncIndex>
 std::string get_method_type_suffix() {
     constexpr std::size_t param_count = get_method_param_count<T, FuncIndex>();
@@ -1036,7 +1048,7 @@ std::string get_method_type_suffix() {
         return "";
     }
 
-    std::ostringstream oss;
+    std::string result;
     [&]<std::size_t... Is>(std::index_sequence<Is...>) {
         ([&] {
             constexpr auto param_type = get_method_param_type<T, FuncIndex, Is>();
@@ -1053,23 +1065,22 @@ std::string get_method_type_suffix() {
                 simplified += c;
             }
 
-            oss << "_" << simplified;
+            result += "_";
+            result += simplified;
         }(), ...);
     }(std::make_index_sequence<param_count>{});
 
-    return oss.str();
+    return result;
 }
 
 // ============================================================================
 // Code Generation Helpers
 // ============================================================================
 
-// Helper template to get member info at compile-time - uses immediate evaluation
+// Helper template to get member info at compile-time - uses cache
 template<typename T, std::size_t Index>
 consteval const char* get_member_name() {
-    return std::meta::identifier_of(
-        std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current())[Index]
-    ).data();
+    return std::meta::identifier_of(get_data_member<T, Index>()).data();
 }
 
 // Generate Python getters/setters for all members of a class
@@ -1288,10 +1299,8 @@ PyTypeObject* bind_class(PyObject* module, const char* name, const char* file_ha
     // Register class in the global registry
     Registry::instance().register_class(name, signature);
 
-    // Get member count for generating getters/setters at compile-time
-    constexpr std::size_t member_count = []() consteval {
-        return std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current()).size();
-    }();
+    // Get member count for generating getters/setters - use cache
+    constexpr std::size_t member_count = get_data_member_count<T>();
 
     // Generate getters/setters using reflection
     static auto getsetters = generate_getsetters<T>(std::make_index_sequence<member_count>{});
