@@ -49,7 +49,6 @@
 #include <vector>
 #include <type_traits>
 #include <concepts>
-#include <functional>
 #include <memory>
 #include <unordered_map>
 #include <cstdio>   // For snprintf in simple repr functions
@@ -1378,6 +1377,31 @@ PyTypeObject* bind_class(PyObject* module, const char* name, const char* file_ha
         }; \
         static ClassName##_Registrar ClassName##_registrar_instance; \
     }
+
+// ============================================================================
+// Extern Template Declarations - Reduce Redundant Instantiations
+// ============================================================================
+//
+// For common types (int, double, std::string), we declare extern templates
+// to avoid recompiling the same instantiations in every translation unit.
+// This is a key technique used by nanobind to speed up compilation.
+//
+// The actual instantiations should be in a single .cpp file (if you have one),
+// or you can let the first binding file instantiate them implicitly.
+
+// Uncomment these if you have multiple binding files and want to explicitly
+// control template instantiation:
+//
+// extern template PyObject* to_python<int>(const int&);
+// extern template PyObject* to_python<double>(const double&);
+// extern template PyObject* to_python<std::string>(const std::string&);
+// extern template bool from_python<int>(PyObject*, int&);
+// extern template bool from_python<double>(PyObject*, double&);
+// extern template bool from_python<std::string>(PyObject*, std::string&);
+
+// ============================================================================
+// Module Definition Macro
+// ============================================================================
 
 // Create a Python module with registered classes
 #define MIRROR_BRIDGE_MODULE(module_name, ...) \
