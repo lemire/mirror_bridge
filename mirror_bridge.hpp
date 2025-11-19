@@ -890,7 +890,8 @@ PyObject* py_getter(PyObject* self, void* closure) {
     using MemberType = typename [:std::meta::type_of(member):];
 
     // Direct member access via reflection - zero runtime overhead
-    auto& value = wrapper->cpp_object->[:member:];
+    // Dereference pointer first to work around compiler bug with -> operator
+    auto& value = (*wrapper->cpp_object).[:member:];
 
     // Type conversion to Python uses overload resolution:
     // - Arithmetic → PyLong_FromLong / PyFloat_FromDouble (direct C API)
@@ -926,7 +927,8 @@ int py_setter(PyObject* self, PyObject* value, void* closure) {
     }
 
     // Use move semantics for move-only types (like unique_ptr)
-    wrapper->cpp_object->[:member:] = std::move(cpp_value);
+    // Dereference pointer first to work around compiler bug with -> operator
+    (*wrapper->cpp_object).[:member:] = std::move(cpp_value);
     return 0;
 }
 
@@ -977,11 +979,12 @@ PyObject* call_method_impl(PyWrapper<T>* wrapper, PyObject* args, std::index_seq
     // Call the C++ method using reflection splicer and parameter pack expansion
     // [:member_func:] is injected as the actual member function (e.g., &T::foo)
     // std::get<Is>(cpp_args)... expands to: get<0>(cpp_args), get<1>(cpp_args), ...
+    // Dereference pointer first to work around compiler bug with -> operator
     if constexpr (std::is_void_v<ReturnType>) {
-        (wrapper->cpp_object->[:member_func:])(std::move(std::get<Is>(cpp_args))...);
+        ((*wrapper->cpp_object).[:member_func:])(std::move(std::get<Is>(cpp_args))...);
         Py_RETURN_NONE;
     } else {
-        ReturnType result = (wrapper->cpp_object->[:member_func:])(std::move(std::get<Is>(cpp_args))...);
+        ReturnType result = ((*wrapper->cpp_object).[:member_func:])(std::move(std::get<Is>(cpp_args))...);
         return to_python(result);  // Convert C++ return value back to Python
     }
 }

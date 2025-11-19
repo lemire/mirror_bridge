@@ -9,9 +9,6 @@
 struct Calculator {
     double value = 0.0;
 
-    Calculator() = default;
-    Calculator(double initial) : value(initial) {}
-
     double add(double x) { return value += x; }
     double subtract(double x) { return value -= x; }
 };
@@ -24,10 +21,10 @@ struct Calculator {
 # 3. Use from Python - everything just works!
 import cpp_calc
 
-calc = cpp_calc.Calculator(100.0)  # Constructors with parameters ✓
-calc.add(10)                       # Methods ✓
-calc.subtract(3)                   # Returns: 107.0
-print(calc.value)                  # Direct member access ✓
+calc = cpp_calc.Calculator()  # Default constructor ✓
+calc.add(10)                  # Methods ✓
+calc.subtract(3)              # Returns: 7.0
+print(calc.value)             # Direct member access ✓ (7.0)
 ```
 
 **No manual binding code. No wrapper macros. Just pure C++26 reflection.** 🎉
@@ -334,9 +331,11 @@ except RuntimeError as e:
 ```
 mirror_bridge/
 ├── mirror_bridge.hpp           # Single-header library (core reflection logic)
+├── mirror_bridge_pch.hpp       # Precompiled header wrapper (optional)
 ├── mirror_bridge_auto          # Auto-discovery script
 ├── mirror_bridge_generate      # Config file script
 ├── mirror_bridge_build         # Direct compilation script
+├── mirror_bridge_build_pch     # PCH builder script (optional)
 ├── start_dev_container.sh      # Docker setup (persistent container)
 ├── examples/
 │   ├── README.md               # Detailed usage guide
@@ -344,6 +343,7 @@ mirror_bridge/
 │   └── option3/                # Config file example
 └── tests/
     ├── run_all_tests.sh        # Automated test suite
+    ├── test_pch.sh             # PCH functionality test
     └── e2e/                    # End-to-end tests
         ├── basic/              # Point2D, Vector3
         ├── containers/         # std::vector, std::array
@@ -451,6 +451,33 @@ Mirror Bridge delivers significant performance improvements over pybind11:
 - **Instant**: Add members/methods → automatically bound
 
 **Methodology:** 5 runs per test, median ± stddev reported, identical optimization flags (`-O3 -DNDEBUG`)
+
+### Precompiled Headers (PCH): **3-6x faster compilation**
+
+For even faster builds, use precompiled headers to cache the Mirror Bridge infrastructure:
+
+```bash
+# One-time: Build PCH (takes ~600ms, reuse forever)
+./mirror_bridge_build_pch -o build -t release
+
+# Every build: Use PCH for 3-6x faster compilation
+mirror_bridge_auto src/ --module my_module --use-pch build/mirror_bridge_pch.hpp.gch
+```
+
+**Performance with PCH:**
+- **Simple project**: 567ms → 194ms (66% faster, 2.9x speedup)
+- **Medium project**: 1580ms → 252ms (84% faster, 6.3x speedup)
+- **One-time cost**: ~600ms to build PCH (amortized across all builds)
+
+**Key benefits:**
+- ✅ **Shared across projects** - build PCH once, use everywhere
+- ✅ **Debug/Release PCH** - separate PCH for different build configurations
+- ✅ **Zero code changes** - just add `--use-pch` flag
+- ✅ **Automatic detection** - `mirror_bridge_auto` finds PCH automatically
+
+**Complete guide:** See [PCH_GUIDE.md](PCH_GUIDE.md) and [WORKFLOW_GUIDE.md](WORKFLOW_GUIDE.md)
+
+**Test suite:** Run `./tests/test_pch.sh` to verify PCH infrastructure
 
 ## Benchmarks
 

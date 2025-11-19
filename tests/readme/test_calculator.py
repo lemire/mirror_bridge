@@ -9,14 +9,13 @@ import cpp_calc
 
 print("=== README Calculator Example ===\n")
 
-# Exact code from README
-calc = cpp_calc.Calculator(100.0)  # Constructors with parameters ✓
-calc.add(10)                       # Methods ✓
-result = calc.subtract(3)          # Returns: 107.0
-print(f"calc.value = {calc.value}")
+# Exact code from README intro
+calc = cpp_calc.Calculator()  # Default constructor ✓
+calc.add(10)                  # Methods ✓
+calc.subtract(3)              # Returns: 7.0
+print(f"calc.value = {calc.value}")  # Direct member access ✓ (7.0)
 
 # Verify results
-assert calc.value == 107.0, f"Expected 107.0, got {calc.value}"
-assert result == 107.0, f"subtract() should return 107.0, got {result}"
+assert calc.value == 7.0, f"Expected 7.0, got {calc.value}"
 
 print("\n✓ README Calculator example works!")

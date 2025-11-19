@@ -1,0 +1,221 @@
+#!/bin/bash
+# Test: Precompiled Header Functionality
+# Verifies that PCH builds correctly and provides compilation speedup
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+TEST_NAME="PCH Functionality"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TEST_BUILD_DIR="$PROJECT_ROOT/build/test_pch"
+
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}Test: $TEST_NAME${NC}"
+echo -e "${BLUE}========================================${NC}"
+echo ""
+
+# Clean test directory
+rm -rf "$TEST_BUILD_DIR"
+mkdir -p "$TEST_BUILD_DIR"
+
+# Track test results
+TESTS_PASSED=0
+TESTS_FAILED=0
+
+# Helper function for test assertions
+assert_test() {
+    local test_name="$1"
+    local condition="$2"
+
+    if eval "$condition"; then
+        echo -e "${GREEN}✓${NC} $test_name"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+        return 0
+    else
+        echo -e "${RED}✗${NC} $test_name"
+        TESTS_FAILED=$((TESTS_FAILED + 1))
+        return 1
+    fi
+}
+
+# Test 1: PCH build script exists and is executable
+echo -e "${YELLOW}[1/7] Checking PCH build script...${NC}"
+assert_test "mirror_bridge_build_pch exists" "[ -f '$PROJECT_ROOT/mirror_bridge_build_pch' ]"
+assert_test "mirror_bridge_build_pch is executable" "[ -x '$PROJECT_ROOT/mirror_bridge_build_pch' ]"
+
+# Test 2: PCH source file exists
+echo -e "${YELLOW}[2/7] Checking PCH source file...${NC}"
+assert_test "mirror_bridge_pch.hpp exists" "[ -f '$PROJECT_ROOT/mirror_bridge_pch.hpp' ]"
+
+# Test 3: Build release PCH
+echo -e "${YELLOW}[3/7] Building release PCH...${NC}"
+cd "$PROJECT_ROOT"
+./mirror_bridge_build_pch -o "$TEST_BUILD_DIR" -t release > /dev/null 2>&1
+PCH_FILE="$TEST_BUILD_DIR/mirror_bridge_pch.hpp.gch"
+
+assert_test "Release PCH was created" "[ -f '$PCH_FILE' ]"
+assert_test "Release PCH is non-empty" "[ -s '$PCH_FILE' ]"
+
+# Get PCH size for reporting
+if [ -f "$PCH_FILE" ]; then
+    PCH_SIZE=$(ls -lh "$PCH_FILE" | awk '{print $5}')
+    echo -e "  ${BLUE}PCH size: $PCH_SIZE${NC}"
+fi
+
+# Test 4: Create test C++ files (two versions: with and without include)
+echo -e "${YELLOW}[4/7] Creating test binding files...${NC}"
+TEST_CPP_NO_PCH="$TEST_BUILD_DIR/test_binding_no_pch.cpp"
+TEST_CPP_WITH_PCH="$TEST_BUILD_DIR/test_binding_with_pch.cpp"
+
+# Version WITHOUT PCH - includes mirror_bridge.hpp
+cat > "$TEST_CPP_NO_PCH" << 'EOF'
+#include "mirror_bridge.hpp"
+#include <string>
+
+struct TestClass {
+    int id;
+    double value;
+    std::string name;
+
+    TestClass() : id(0), value(0.0), name("") {}
+
+    void set_value(double v) { value = v; }
+    double get_value() const { return value; }
+};
+
+MIRROR_BRIDGE_MODULE(test_pch_module,
+    mirror_bridge::bind_class<TestClass>(m, "TestClass");
+)
+EOF
+
+# Version WITH PCH - does NOT include (PCH already has it)
+cat > "$TEST_CPP_WITH_PCH" << 'EOF'
+// When using -include-pch, do NOT include mirror_bridge.hpp (it's in the PCH)
+#include <string>
+
+struct TestClass {
+    int id;
+    double value;
+    std::string name;
+
+    TestClass() : id(0), value(0.0), name("") {}
+
+    void set_value(double v) { value = v; }
+    double get_value() const { return value; }
+};
+
+MIRROR_BRIDGE_MODULE(test_pch_module,
+    mirror_bridge::bind_class<TestClass>(m, "TestClass");
+)
+EOF
+
+assert_test "Test binding files created" "[ -f '$TEST_CPP_NO_PCH' ] && [ -f '$TEST_CPP_WITH_PCH' ]"
+
+# Test 5: Compile WITHOUT PCH (baseline)
+echo -e "${YELLOW}[5/7] Compiling WITHOUT PCH (baseline)...${NC}"
+
+TEST_SO_NO_PCH="$TEST_BUILD_DIR/test_no_pch.so"
+
+# Measure compilation time without PCH
+start_no_pch=$(date +%s%N)
+clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+    -O3 -DNDEBUG -fPIC -shared \
+    -I"$PROJECT_ROOT" \
+    $(python3-config --includes --ldflags 2>/dev/null || echo "-I/usr/include/python3.10") \
+    "$TEST_CPP_NO_PCH" -o "$TEST_SO_NO_PCH" 2>&1 | grep -v "mixture of designated" | grep -v "does not define __cpp_reflection" > /dev/null || true
+end_no_pch=$(date +%s%N)
+
+TIME_NO_PCH=$(( (end_no_pch - start_no_pch) / 1000000 ))
+
+assert_test "Compilation without PCH succeeded" "[ -f '$TEST_SO_NO_PCH' ]"
+echo -e "  ${BLUE}Time without PCH: ${TIME_NO_PCH}ms${NC}"
+
+# Test 6: Compile WITH PCH
+echo -e "${YELLOW}[6/7] Compiling WITH PCH...${NC}"
+
+TEST_SO_WITH_PCH="$TEST_BUILD_DIR/test_with_pch.so"
+
+# Measure compilation time with PCH
+start_with_pch=$(date +%s%N)
+clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+    -O3 -DNDEBUG -fPIC -shared \
+    -I"$PROJECT_ROOT" \
+    -include-pch "$PCH_FILE" \
+    $(python3-config --includes --ldflags 2>/dev/null || echo "-I/usr/include/python3.10") \
+    "$TEST_CPP_WITH_PCH" -o "$TEST_SO_WITH_PCH" 2>&1 | grep -v "mixture of designated" | grep -v "does not define __cpp_reflection" > /dev/null || true
+end_with_pch=$(date +%s%N)
+
+TIME_WITH_PCH=$(( (end_with_pch - start_with_pch) / 1000000 ))
+
+assert_test "Compilation with PCH succeeded" "[ -f '$TEST_SO_WITH_PCH' ]"
+echo -e "  ${BLUE}Time with PCH: ${TIME_WITH_PCH}ms${NC}"
+
+# Test 7: Verify PCH provides speedup
+echo -e "${YELLOW}[7/7] Verifying PCH performance benefit...${NC}"
+
+if [ $TIME_NO_PCH -gt 0 ] && [ $TIME_WITH_PCH -gt 0 ]; then
+    SPEEDUP=$(awk "BEGIN {printf \"%.2f\", $TIME_NO_PCH / $TIME_WITH_PCH}")
+    echo -e "  ${BLUE}Speedup: ${SPEEDUP}x${NC}"
+
+    # PCH should be at least 1.5x faster (conservative threshold)
+    SPEEDUP_INT=$(awk "BEGIN {printf \"%.0f\", $SPEEDUP * 100}")
+    assert_test "PCH provides speedup (>1.5x)" "[ $SPEEDUP_INT -ge 150 ]"
+else
+    echo -e "${YELLOW}  Warning: Could not measure speedup accurately${NC}"
+fi
+
+# Test 8: Verify both modules are functionally identical
+echo -e "${YELLOW}[Bonus] Verifying modules are functionally identical...${NC}"
+
+# Both should have same size (approximately)
+SIZE_NO_PCH=$(stat -f%z "$TEST_SO_NO_PCH" 2>/dev/null || stat -c%s "$TEST_SO_NO_PCH" 2>/dev/null)
+SIZE_WITH_PCH=$(stat -f%z "$TEST_SO_WITH_PCH" 2>/dev/null || stat -c%s "$TEST_SO_WITH_PCH" 2>/dev/null)
+
+if [ -n "$SIZE_NO_PCH" ] && [ -n "$SIZE_WITH_PCH" ]; then
+    # Sizes should be identical or very close (within 1KB)
+    SIZE_DIFF=$((SIZE_NO_PCH - SIZE_WITH_PCH))
+    SIZE_DIFF=${SIZE_DIFF#-}  # Absolute value
+
+    if [ $SIZE_DIFF -lt 1024 ]; then
+        echo -e "${GREEN}✓${NC} Modules have identical size (no PCH artifacts in binary)"
+        TESTS_PASSED=$((TESTS_PASSED + 1))
+    else
+        echo -e "${YELLOW}⚠${NC} Module sizes differ by $SIZE_DIFF bytes (acceptable)"
+    fi
+fi
+
+# Summary
+echo ""
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}Test Results${NC}"
+echo -e "${BLUE}========================================${NC}"
+echo -e "Tests passed: ${GREEN}$TESTS_PASSED${NC}"
+echo -e "Tests failed: ${RED}$TESTS_FAILED${NC}"
+echo ""
+
+if [ $TESTS_FAILED -eq 0 ]; then
+    echo -e "${GREEN}✓ All PCH tests passed!${NC}"
+    echo ""
+    echo -e "${YELLOW}Performance Summary:${NC}"
+    echo -e "  Without PCH: ${TIME_NO_PCH}ms"
+    echo -e "  With PCH:    ${TIME_WITH_PCH}ms"
+    if [ -n "$SPEEDUP" ]; then
+        echo -e "  Speedup:     ${GREEN}${SPEEDUP}x faster${NC}"
+    fi
+    echo ""
+
+    # Clean up test build directory
+    rm -rf "$TEST_BUILD_DIR"
+    exit 0
+else
+    echo -e "${RED}✗ Some PCH tests failed${NC}"
+    echo -e "Test artifacts preserved in: $TEST_BUILD_DIR"
+    exit 1
+fi

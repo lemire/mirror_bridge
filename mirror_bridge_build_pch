@@ -1,0 +1,175 @@
+#!/bin/bash
+# Mirror Bridge - Precompiled Header Builder
+# Simplifies PCH creation with correct flags
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Default configuration
+OUTPUT_DIR="build"
+BUILD_TYPE="release"
+VERBOSE=0
+
+# Help message
+show_help() {
+    cat << EOF
+Mirror Bridge PCH Builder - Create precompiled headers easily
+
+Usage: mirror_bridge_build_pch [options]
+
+Options:
+  -o, --output-dir DIR    Output directory (default: build/)
+  -t, --type TYPE         Build type: release|debug (default: release)
+  -v, --verbose           Show compilation output
+  -h, --help              Show this help message
+
+Build Types:
+  release: -O3 -DNDEBUG (optimized, no debug info)
+  debug:   -O0 -g (no optimization, with debug info)
+
+Examples:
+  # Create release PCH
+  ./mirror_bridge_build_pch
+
+  # Create debug PCH in custom directory
+  ./mirror_bridge_build_pch -o build/debug -t debug
+
+Output:
+  Creates: <output-dir>/mirror_bridge_pch.hpp.gch
+
+This PCH can then be used with:
+  - mirror_bridge_build --use-pch <pch-file>
+  - mirror_bridge_auto --use-pch <pch-file>
+
+Performance:
+  Building PCH: ~600ms (one-time cost)
+  Using PCH:    3-6x faster compilation!
+
+EOF
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -o|--output-dir)
+            OUTPUT_DIR="$2"
+            shift 2
+            ;;
+        -t|--type)
+            BUILD_TYPE="$2"
+            shift 2
+            ;;
+        -v|--verbose)
+            VERBOSE=1
+            shift
+            ;;
+        -*)
+            echo -e "${RED}Error: Unknown option $1${NC}"
+            show_help
+            exit 1
+            ;;
+        *)
+            echo -e "${RED}Error: Unexpected argument $1${NC}"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+# Validate build type
+if [[ "$BUILD_TYPE" != "release" && "$BUILD_TYPE" != "debug" ]]; then
+    echo -e "${RED}Error: Build type must be 'release' or 'debug'${NC}"
+    exit 1
+fi
+
+# Get script directory (where mirror_bridge_pch.hpp is)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PCH_SOURCE="$SCRIPT_DIR/mirror_bridge_pch.hpp"
+
+if [ ! -f "$PCH_SOURCE" ]; then
+    echo -e "${RED}Error: mirror_bridge_pch.hpp not found in $SCRIPT_DIR${NC}"
+    exit 1
+fi
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
+
+# Determine compiler flags based on build type
+if [ "$BUILD_TYPE" = "release" ]; then
+    OPT_FLAGS="-O3 -DNDEBUG"
+    PCH_OUTPUT="$OUTPUT_DIR/mirror_bridge_pch.hpp.gch"
+else
+    OPT_FLAGS="-O0 -g"
+    PCH_OUTPUT="$OUTPUT_DIR/mirror_bridge_pch_debug.hpp.gch"
+fi
+
+# Check for required tools
+if ! command -v clang++ &> /dev/null; then
+    echo -e "${RED}Error: clang++ not found${NC}"
+    echo "This script requires Bloomberg clang-p2996 or compatible C++26 compiler"
+    exit 1
+fi
+
+# Get Python includes
+PYTHON_INCLUDES=$(python3-config --includes 2>/dev/null || echo "-I/usr/include/python3.10")
+
+echo -e "${BLUE}=======================================${NC}"
+echo -e "${BLUE}  Mirror Bridge - PCH Builder${NC}"
+echo -e "${BLUE}=======================================${NC}"
+echo ""
+echo -e "Build type:    ${GREEN}$BUILD_TYPE${NC}"
+echo -e "Output:        ${GREEN}$PCH_OUTPUT${NC}"
+echo -e "Optimization:  ${GREEN}$OPT_FLAGS${NC}"
+echo ""
+
+# Build PCH
+echo -e "${YELLOW}Building precompiled header...${NC}"
+
+COMPILE_CMD="clang++ -std=c++2c -freflection -freflection-latest \
+    -fPIC -stdlib=libc++ \
+    $PYTHON_INCLUDES \
+    $OPT_FLAGS \
+    -x c++-header \"$PCH_SOURCE\" \
+    -o \"$PCH_OUTPUT\""
+
+if [ $VERBOSE -eq 1 ]; then
+    echo -e "${BLUE}Command:${NC}"
+    echo "$COMPILE_CMD"
+    echo ""
+    eval "$COMPILE_CMD"
+    BUILD_SUCCESS=$?
+else
+    # Suppress warnings, show only errors
+    eval "$COMPILE_CMD" 2>&1 | grep -v "mixture of designated" | grep -v "does not define __cpp_reflection" | grep "error:" || true
+    BUILD_SUCCESS=${PIPESTATUS[0]}
+fi
+
+# Check if build succeeded
+if [ $BUILD_SUCCESS -eq 0 ] && [ -f "$PCH_OUTPUT" ]; then
+    PCH_SIZE=$(ls -lh "$PCH_OUTPUT" | awk '{print $5}')
+    echo ""
+    echo -e "${GREEN}✓ PCH built successfully!${NC}"
+    echo -e "  Location: ${BLUE}$PCH_OUTPUT${NC}"
+    echo -e "  Size:     ${BLUE}$PCH_SIZE${NC}"
+    echo ""
+    echo -e "${YELLOW}Usage:${NC}"
+    echo -e "  mirror_bridge_auto src/ --module my_module --use-pch $PCH_OUTPUT"
+    echo ""
+    echo -e "${GREEN}Expected speedup: 3-6x faster compilation!${NC}"
+    exit 0
+else
+    echo ""
+    echo -e "${RED}✗ PCH build failed${NC}"
+    echo -e "Try running with -v for more details"
+    exit 1
+fi
