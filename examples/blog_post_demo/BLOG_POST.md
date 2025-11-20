@@ -18,6 +18,11 @@ Enter **Mirror Bridge**: automatic C++ bindings using reflection.
 
 Let's build a realistic example: an image processor with CPU-intensive operations like Gaussian blur, edge detection, and histogram equalization.
 
+Here's what our image processor can do:
+
+![Image Transformations](transformations.png)
+*Figure 1: Visual demonstration of image transformations - Original, Gaussian Blur, Edge Detection, Brightness Adjustment, and Histogram Equalization*
+
 ### Step 1: Pure Python Implementation
 
 First, we implement it in pure Python to see the baseline performance:
@@ -75,25 +80,21 @@ TOTAL: 8.406s
 **8.4 seconds** to process a single 512x512 image! 🐌
 
 The profiler reveals the bottlenecks:
-- **79.3% of time spent in Gaussian blur alone** (6.7 seconds!)
-- Nested loops over 262,144 pixels
+
+![Performance Hotspots](hotspots.png)
+*Figure 2: Performance hotspot analysis showing where Python spends its time*
+
+Key findings:
+- **79.7% of time spent in Gaussian blur alone** (6.7 seconds!)
+- Nested loops over 262,144 pixels (512×512 × 3 color channels)
 - Python function call overhead for every pixel
-- No vectorization or SIMD
+- No vectorization or SIMD optimizations
 - GIL preventing multi-threading
 
-\`\`\`
-Time Distribution - Where is Python Spending Time?
-================================================================================
+![Detailed Flame Graph](flamegraph.png)
+*Figure 3: Detailed function-level profiling showing the call hierarchy and time distribution*
 
-Gaussian Blur             ███████████████████████████████████████  6.701s (79.7%)
-Edge Detection            ████████                                 1.384s (16.5%)
-Histogram Eq              █                                        0.176s ( 2.1%)
-Brightness                                                         0.095s ( 1.1%)
-Initialization                                                     0.050s ( 0.6%)
-
-💡 Key insight: Gaussian blur accounts for ~80% of execution time!
-   This is the primary target for C++ optimization.
-\`\`\`
+💡 **Key insight**: Gaussian blur accounts for ~80% of execution time - this is our primary target for C++ optimization!
 
 ### Step 3: Port Performance-Critical Code to C++
 

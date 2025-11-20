@@ -1,0 +1,92 @@
+This script visualizes benchmark results for the blog post
+Run the benchmark first, then use the actual results here
+
+
+================================================================================
+Performance Comparison - Time per Operation
+================================================================================
+
+Python (baseline):
+--------------------------------------------------------------------------------
+Gaussian Blur        ████████████████████████████████████████████████████████████ 6.630s
+Edge Detection       ████████████ 1.409s
+Histogram Eq.        █ 0.174s
+Brightness            0.095s
+Initialization        0.051s
+
+C++ (with Mirror Bridge):
+--------------------------------------------------------------------------------
+Gaussian Blur        █ 0.114s (58.2x faster)
+Edge Detection       █ 0.032s (44.0x faster)
+Histogram Eq.        █ 0.006s (29.0x faster)
+Brightness           █ 0.001s (95.0x faster)
+Initialization       █ 0.005s (10.2x faster)
+
+================================================================================
+
+Speedup Factors (how many times faster C++ is):
+--------------------------------------------------------------------------------
+Brightness           ████████████████████████████████████████████████████████████ 95.0x
+Gaussian Blur        ████████████████████████████████████ 58.2x
+Edge Detection       ███████████████████████████ 44.0x
+Histogram Eq.        ██████████████████ 29.0x
+Initialization       ██████ 10.2x
+================================================================================
+
+================================================================================
+Time Distribution - Where is Python Spending Time?
+================================================================================
+
+Total time: 8.359s
+
+Gaussian Blur             ███████████████████████████████████████             6.630s ( 79.3%) [cumulative:  79.3%]
+Edge Detection            ████████                                            1.409s ( 16.9%) [cumulative:  96.2%]
+Histogram Eq              █                                                   0.174s (  2.1%) [cumulative:  98.3%]
+Brightness                                                                    0.095s (  1.1%) [cumulative:  99.4%]
+Initialization                                                                0.051s (  0.6%) [cumulative: 100.0%]
+
+================================================================================
+💡 Key insight: Gaussian blur accounts for ~80% of execution time!
+   This is the primary target for C++ optimization.
+================================================================================
+
+## Benchmark Results
+
+| Operation | Python | C++ | Speedup |
+|-----------|--------|-----|---------|
+| Gaussian Blur                  |  6.630s |  0.114s | ** 58.2x** |
+| Edge Detection                 |  1.409s |  0.032s | ** 44.0x** |
+| Histogram Equalization         |  0.174s |  0.006s | ** 29.0x** |
+| Brightness Adjustment          |  0.095s |  0.001s | ** 95.0x** |
+| Initialization                 |  0.051s |  0.005s | ** 10.2x** |
+| **TOTAL** | ** 8.359s** | ** 0.158s** | ** 52.9x** |
+
+
+✓ Results saved to benchmark_results.json
+  Use this with Chart.js, D3.js, or other visualization libraries
+
+================================================================================
+Visualization tips for blog post:
+================================================================================
+
+1. Flame Graph:
+   - Shows call stacks vertically
+   - Width = time spent
+   - Hover to see function names
+   - Red/orange colors = hot spots
+
+2. Bar Charts:
+   - Clear visual comparison
+   - Side-by-side Python vs C++
+   - Speedup bars show relative improvement
+
+3. Tables:
+   - Precise numbers for reference
+   - Easy to copy/paste
+   - Good for reports
+
+4. JSON Export:
+   - Use with interactive visualization libraries
+   - Chart.js, D3.js, Plotly, etc.
+   - Enables custom visualizations
+

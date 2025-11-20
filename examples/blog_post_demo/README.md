@@ -1,15 +1,25 @@
 # Blog Post Demo: Speeding Up Python with Mirror Bridge
 
-This directory contains a complete, runnable demo showing how Mirror Bridge can make Python **50x faster** with **zero lines of binding code**.
+This directory contains a complete, runnable demo showing how Mirror Bridge can make Python **29.2x faster** with **zero lines of binding code**.
+
+## Visual Demo
+
+![Image Transformations](transformations.png)
+*Image processing operations visualized*
+
+![Performance Hotspots](hotspots.png)
+*Performance analysis - Gaussian blur takes 80% of Python's time!*
 
 ## What's Included
 
 - **Pure Python Implementation** (`image_processor_pure_python.py`) - Baseline implementation showing Python's performance limitations
 - **C++ Implementation** (`image_processor.hpp`) - High-performance C++ version of the same algorithms
 - **Profiling Tools** (`profile_python.py`) - Profile and visualize Python bottlenecks
+- **Visualization Tools** (`generate_visual_demo.py`, `generate_flamegraph_image.py`) - Create visual demonstrations
 - **Auto-Discovery Script** (`run_auto_discovery.sh`) - One-command binding generation
 - **Benchmark Comparison** (`benchmark_comparison.py`) - Head-to-head performance comparison
 - **Blog Post** (`BLOG_POST.md`) - Full writeup with results and explanations
+- **Generated Images** (`transformations.png`, `flamegraph.png`, `hotspots.png`) - Visual aids for the blog post
 
 ## Quick Start
 
