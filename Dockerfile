@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 # Prevent interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install essential build tools and Python development files
+# Install essential build tools, Python, Node.js, and Lua development files
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -12,9 +12,16 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-dev \
     python3-pip \
+    nodejs \
+    npm \
+    lua5.4 \
+    liblua5.4-dev \
     wget \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js native addon tools
+RUN npm install -g node-gyp node-addon-api
 
 # Build and install clang-p2996 with reflection support AND libcxx
 # This branch implements the C++26 reflection proposal (P2996)

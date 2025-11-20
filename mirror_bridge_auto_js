@@ -1,0 +1,269 @@
+#!/bin/bash
+# Mirror Bridge Auto (JavaScript) - Auto-discover and bind all classes in a directory
+# Usage: mirror_bridge_auto_js <src_dir> --module <name> [options]
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+# Default configuration
+OUTPUT_DIR="build"
+MODULE_NAME=""
+SRC_DIR=""
+VERBOSE=0
+KEEP_GENERATED=0
+
+# Help message
+show_help() {
+    cat << EOF
+Mirror Bridge Auto (JavaScript) - Auto-discover and bind classes from directory
+
+Usage: mirror_bridge_auto_js <src_dir> --module <name> [options]
+
+Options:
+  --module NAME           Node.js module name (required)
+  -o, --output-dir DIR    Output directory for .node file (default: build/)
+  -k, --keep-generated    Keep generated binding .cpp file
+  -v, --verbose           Show compilation output
+  -h, --help              Show this help message
+
+Auto-Discovery:
+  Scans all .hpp/.h files in src_dir and automatically binds all
+  struct/class definitions found.
+
+  Opt-out: Add comment "MIRROR_BRIDGE_SKIP" before class:
+    // MIRROR_BRIDGE_SKIP
+    struct InternalClass { ... };
+
+Examples:
+  # Basic usage
+  mirror_bridge_auto_js src/ --module my_module
+
+This generates: build/my_module.node for use with Node.js
+
+EOF
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        --module)
+            MODULE_NAME="$2"
+            shift 2
+            ;;
+        -o|--output-dir)
+            OUTPUT_DIR="$2"
+            shift 2
+            ;;
+        -k|--keep-generated)
+            KEEP_GENERATED=1
+            shift
+            ;;
+        -v|--verbose)
+            VERBOSE=1
+            shift
+            ;;
+        -*)
+            echo -e "${RED}Error: Unknown option $1${NC}"
+            show_help
+            exit 1
+            ;;
+        *)
+            if [ -z "$SRC_DIR" ]; then
+                SRC_DIR="$1"
+            else
+                echo -e "${RED}Error: Multiple source directories specified${NC}"
+                exit 1
+            fi
+            shift
+            ;;
+    esac
+done
+
+# Validate input
+if [ -z "$SRC_DIR" ]; then
+    echo -e "${RED}Error: No source directory specified${NC}"
+    show_help
+    exit 1
+fi
+
+if [ -z "$MODULE_NAME" ]; then
+    echo -e "${RED}Error: No module name specified (use --module)${NC}"
+    show_help
+    exit 1
+fi
+
+if [ ! -d "$SRC_DIR" ]; then
+    echo -e "${RED}Error: Directory not found: $SRC_DIR${NC}"
+    exit 1
+fi
+
+# Get absolute paths
+SRC_DIR=$(realpath "$SRC_DIR")
+OUTPUT_DIR=$(realpath "$OUTPUT_DIR")
+
+mkdir -p "$OUTPUT_DIR"
+
+echo -e "${BLUE}Mirror Bridge Auto-Discovery (JavaScript)${NC}"
+echo -e "${BLUE}=========================================${NC}"
+echo ""
+echo -e "Source directory: ${YELLOW}$SRC_DIR${NC}"
+echo -e "Module name:      ${YELLOW}$MODULE_NAME${NC}"
+echo ""
+
+# Find all header files
+echo -e "${YELLOW}Scanning for classes...${NC}"
+HEADER_FILES=$(find "$SRC_DIR" -type f \( -name "*.hpp" -o -name "*.h" \) | sort)
+
+if [ -z "$HEADER_FILES" ]; then
+    echo -e "${RED}Error: No header files found in $SRC_DIR${NC}"
+    exit 1
+fi
+
+# Discover classes
+declare -a CLASSES
+declare -a HEADERS
+
+while IFS= read -r header_file; do
+    # Get relative path from SRC_DIR
+    rel_path=$(realpath --relative-to="$SRC_DIR" "$header_file")
+
+    # Check if file should be skipped entirely
+    if grep -q "MIRROR_BRIDGE_SKIP_FILE" "$header_file" 2>/dev/null; then
+        if [ $VERBOSE -eq 1 ]; then
+            echo -e "${BLUE}  Skipping file: $rel_path (MIRROR_BRIDGE_SKIP_FILE)${NC}"
+        fi
+        continue
+    fi
+
+    # Find all class/struct definitions
+    while IFS= read -r line; do
+        # Check if line contains class or struct definition
+        if [[ "$line" =~ ^[[:space:]]*(struct|class)[[:space:]]+([a-zA-Z_][a-zA-Z0-9_]*) ]]; then
+            class_name="${BASH_REMATCH[2]}"
+
+            # Check if this is a forward declaration (ends with ;)
+            if [[ "$line" =~ \;[[:space:]]*$ ]]; then
+                continue
+            fi
+
+            # Check if previous lines contain MIRROR_BRIDGE_SKIP
+            line_num=$(grep -n "^[[:space:]]*\(struct\|class\)[[:space:]]\+$class_name" "$header_file" | head -1 | cut -d: -f1)
+            if [ -n "$line_num" ] && [ "$line_num" -gt 1 ]; then
+                prev_line=$((line_num - 1))
+                if sed -n "${prev_line}p" "$header_file" | grep -q "MIRROR_BRIDGE_SKIP"; then
+                    if [ $VERBOSE -eq 1 ]; then
+                        echo -e "${BLUE}  Skipping: $class_name (marked MIRROR_BRIDGE_SKIP)${NC}"
+                    fi
+                    continue
+                fi
+            fi
+
+            # Add to list
+            CLASSES+=("$class_name")
+            HEADERS+=("$rel_path")
+            echo -e "  ${GREEN}✓${NC} Found: $class_name in $rel_path"
+        fi
+    done < "$header_file"
+
+done <<< "$HEADER_FILES"
+
+# Check if any classes found
+if [ ${#CLASSES[@]} -eq 0 ]; then
+    echo -e "${RED}Error: No classes found in $SRC_DIR${NC}"
+    echo -e "${YELLOW}Tip: Classes must be defined as 'struct ClassName' or 'class ClassName'${NC}"
+    exit 1
+fi
+
+echo ""
+echo -e "${GREEN}Discovered ${#CLASSES[@]} classes${NC}"
+echo ""
+
+# Generate binding file
+GENERATED_FILE="$OUTPUT_DIR/${MODULE_NAME}_binding.cpp"
+echo -e "${YELLOW}Generating JavaScript binding file...${NC}"
+
+cat > "$GENERATED_FILE" << EOF
+// Auto-generated by mirror_bridge_auto_js
+// Source: $SRC_DIR
+// Generated: $(date)
+
+#include "javascript/mirror_bridge_javascript.hpp"
+EOF
+
+# Add header includes (unique only)
+declare -A included
+for header in "${HEADERS[@]}"; do
+    if [ -z "${included[$header]}" ]; then
+        echo "#include \"$header\"" >> "$GENERATED_FILE"
+        included[$header]=1
+    fi
+done
+
+echo "" >> "$GENERATED_FILE"
+
+# Generate module with all class bindings
+echo "MIRROR_BRIDGE_JS_MODULE($MODULE_NAME," >> "$GENERATED_FILE"
+
+for i in "${!CLASSES[@]}"; do
+    class_name="${CLASSES[$i]}"
+    echo "    mirror_bridge::javascript::bind_class<$class_name>(env, m, \"$class_name\");" >> "$GENERATED_FILE"
+done
+
+echo ")" >> "$GENERATED_FILE"
+
+echo -e "${GREEN}✓ Generated: $GENERATED_FILE${NC}"
+echo ""
+
+# Compile
+echo -e "${YELLOW}Compiling JavaScript module...${NC}"
+
+COMPILE_CMD="clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+    -I. -I$SRC_DIR -I/usr/include/node \
+    -fPIC -shared \
+    $GENERATED_FILE \
+    -o $OUTPUT_DIR/$MODULE_NAME.node"
+
+if [ $VERBOSE -eq 1 ]; then
+    echo -e "${BLUE}$COMPILE_CMD${NC}"
+    eval "$COMPILE_CMD"
+else
+    eval "$COMPILE_CMD" 2>&1 | grep -E "(error|Error)" || true
+fi
+
+if [ ! -f "$OUTPUT_DIR/$MODULE_NAME.node" ]; then
+    echo -e "${RED}Error: Compilation failed${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Compiled: $OUTPUT_DIR/$MODULE_NAME.node${NC}"
+
+# Clean up generated file unless requested to keep
+if [ $KEEP_GENERATED -eq 0 ]; then
+    rm "$GENERATED_FILE"
+    echo -e "${BLUE}Cleaned up generated file${NC}"
+else
+    echo -e "${BLUE}Generated file kept: $GENERATED_FILE${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}✓ Successfully auto-discovered and built: ${MODULE_NAME}.node${NC}"
+echo -e "${GREEN}  Classes bound: ${#CLASSES[@]}${NC}"
+echo ""
+echo -e "${BLUE}Usage from Node.js:${NC}"
+echo -e "  const $MODULE_NAME = require('./$OUTPUT_DIR/$MODULE_NAME');"
+echo ""
+echo -e "  // Classes available:"
+for class_name in "${CLASSES[@]}"; do
+    echo -e "  // new ${MODULE_NAME}.${class_name}()"
+done
+echo ""

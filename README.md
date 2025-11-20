@@ -1,37 +1,58 @@
 # Mirror Bridge
 
-**Modern C++ meets Python: Automatic bindings using C++26 reflection - zero boilerplate, pure compile-time magic.**
+**Modern C++ meets Multiple Languages: Automatic bindings using C++26 reflection - zero boilerplate, pure compile-time magic.**
 
 > ⚠️ **EXPERIMENTAL**: This project requires C++26 reflection (P2996), which is not yet standardized. It only works with [Bloomberg's clang-p2996 fork](https://github.com/bloomberg/clang-p2996). Not recommended for production use until P2996 lands in standard C++26.
 
+## One C++ Class, Three Languages
+
 ```cpp
-// 1. Write modern C++ with reflection
+// Write your C++ code once
 struct Calculator {
     double value = 0.0;
-
     double add(double x) { return value += x; }
     double subtract(double x) { return value -= x; }
 };
-
-// 2. One command to bind everything:
-//    mirror_bridge_auto src/ --module cpp_calc
 ```
 
+**Python:**
 ```python
-# 3. Use from Python - everything just works!
 import cpp_calc
+calc = cpp_calc.Calculator()
+calc.add(10)
+calc.subtract(3)
+print(calc.value)  # 7.0
+```
 
-calc = cpp_calc.Calculator()  # Default constructor ✓
-calc.add(10)                  # Methods ✓
-calc.subtract(3)              # Returns: 7.0
-print(calc.value)             # Direct member access ✓ (7.0)
+**JavaScript (Node.js):**
+```javascript
+const calc = new addon.Calculator();
+calc.add(10);
+calc.subtract(3);
+console.log(calc.x);  // 7.0
+```
+
+**Lua:**
+```lua
+local calc = cpp_calc.Calculator()
+calc:add(10)
+calc:subtract(3)
+print(calc.value)  -- 7.0
 ```
 
 **No manual binding code. No wrapper macros. Just pure C++26 reflection.** 🎉
 
+## Supported Languages
+
+| Language | Status | API | Example |
+|----------|--------|-----|---------|
+| **Python** | ✅ Stable | Python C API | `import my_module` |
+| **JavaScript** | ✅ Stable | Node.js N-API | `const mod = require('my_module')` |
+| **Lua** | ✅ Stable | Lua C API | `local mod = require("my_module")` |
+
 ## What is Mirror Bridge?
 
-Mirror Bridge is a **single-header library** that uses C++26 reflection (P2996) to automatically introspect your C++ classes at compile-time and generate Python bindings. It discovers:
+Mirror Bridge is a **header-only library** that uses C++26 reflection (P2996) to automatically introspect your C++ classes at compile-time and generate bindings for Python, JavaScript, and Lua. It discovers:
 
 - ✅ **Data members** - automatic getters/setters with type safety
 - ✅ **Methods** (any number of parameters) - variadic parameter support
@@ -129,13 +150,25 @@ Mirror Bridge offers two workflows optimized for different use cases:
 
 **Just point at a directory - bindings are auto-generated for all classes.**
 
+**Python:**
 ```bash
 mirror_bridge_auto src/ --module my_module
+```
+
+**Lua:**
+```bash
+mirror_bridge_auto_lua src/ --module my_module
+```
+
+**JavaScript (Node.js):**
+```bash
+mirror_bridge_auto_js src/ --module my_module
 ```
 
 - ✅ **Zero configuration** - discovers all classes automatically
 - ✅ **Perfect for prototyping** and small projects
 - ✅ **Opt-out via comments** - mark classes to skip
+- ✅ **Works for all three languages** - Python, Lua, JavaScript
 
 **Example:**
 ```cpp
@@ -190,6 +223,33 @@ mirror_bridge_generate my_module.mirror
 See [`examples/option3/`](examples/option3) for full example.
 
 **Full comparison:** [examples/README.md](examples/README.md)
+
+## Single-Header Distribution
+
+For easier integration, Mirror Bridge provides **single-header amalgamated versions** for each language. Just copy one file to your project!
+
+**Generate single-headers:**
+```bash
+./amalgamate.sh
+```
+
+This creates:
+- `single_header/mirror_bridge_python.hpp` (~1771 lines, 65KB)
+- `single_header/mirror_bridge_lua.hpp` (~859 lines, 32KB)
+- `single_header/mirror_bridge_javascript.hpp` (~875 lines, 33KB)
+
+**Usage:**
+```cpp
+// Instead of: #include "python/mirror_bridge_python.hpp"
+// Just:
+#include "mirror_bridge_python.hpp"  // Single self-contained header!
+
+MIRROR_BRIDGE_MODULE(my_module,
+    mirror_bridge::bind_class<MyClass>(m, "MyClass");
+)
+```
+
+See [SINGLE_HEADER_GUIDE.md](SINGLE_HEADER_GUIDE.md) for complete documentation.
 
 ## What Gets Auto-Generated?
 

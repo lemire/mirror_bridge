@@ -4,6 +4,11 @@ build/
 *.so
 *.dylib
 *.dll
+*.node
+
+# Node.js
+node_modules/
+package-lock.json
 
 # Python
 __pycache__/
@@ -38,6 +43,7 @@ class_hashes.db
 # Temporary files
 *.tmp
 .*.tmp
+*.backup
 
 # Docker volumes (if using docker-compose)
 .docker-volumes/
