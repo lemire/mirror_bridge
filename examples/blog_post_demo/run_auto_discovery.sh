@@ -25,7 +25,7 @@ echo ""
 echo "[1/3] Running auto-discovery on C++ headers..."
 echo ""
 
-../../mirror_bridge_auto . --module image_processor --output .
+../../mirror_bridge_auto . --module image_processor
 
 echo ""
 echo "✓ Auto-discovery complete!"

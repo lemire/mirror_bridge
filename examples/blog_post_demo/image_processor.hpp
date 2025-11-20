@@ -14,6 +14,9 @@ private:
     std::vector<float> pixels_;
 
 public:
+    // Default constructor
+    ImageProcessor() : width_(0), height_(0) {}
+
     // Constructor
     ImageProcessor(int width, int height)
         : width_(width), height_(height), pixels_(width * height * 3, 0.0f) {}

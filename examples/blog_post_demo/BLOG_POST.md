@@ -63,21 +63,37 @@ python profile_python.py
 Pure Python Image Processor Benchmark (512x512 image)
 ========================================
 
-1. Gaussian blur...           8.234s
-2. Edge detection...          3.891s
-3. Histogram equalization...  2.156s
-4. Brightness adjustment...   0.842s
+Initialization:             0.050s
+Gaussian Blur:              6.701s
+Brightness Adjustment:      0.095s
+Edge Detection:             1.384s
+Histogram Equalization:     0.176s
 
-TOTAL: 15.123s
+TOTAL: 8.406s
 \`\`\`
 
-**15 seconds** to process a single 512x512 image! 🐌
+**8.4 seconds** to process a single 512x512 image! 🐌
 
 The profiler reveals the bottlenecks:
+- **79.3% of time spent in Gaussian blur alone** (6.7 seconds!)
 - Nested loops over 262,144 pixels
 - Python function call overhead for every pixel
 - No vectorization or SIMD
 - GIL preventing multi-threading
+
+\`\`\`
+Time Distribution - Where is Python Spending Time?
+================================================================================
+
+Gaussian Blur             ███████████████████████████████████████  6.701s (79.7%)
+Edge Detection            ████████                                 1.384s (16.5%)
+Histogram Eq              █                                        0.176s ( 2.1%)
+Brightness                                                         0.095s ( 1.1%)
+Initialization                                                     0.050s ( 0.6%)
+
+💡 Key insight: Gaussian blur accounts for ~80% of execution time!
+   This is the primary target for C++ optimization.
+\`\`\`
 
 ### Step 3: Port Performance-Critical Code to C++
 
@@ -154,17 +170,37 @@ python benchmark_comparison.py
 
 Operation                      Python        C++     Speedup
 ---------------------------------------------------------------
-Gaussian Blur                   8.234s     0.142s      58.0x
-Edge Detection                  3.891s     0.089s      43.7x
-Histogram Equalization          2.156s     0.067s      32.2x
-Brightness Adjustment           0.842s     0.011s      76.5x
+Initialization                  0.050s     0.004s      13.3x
+Gaussian Blur                   6.701s     0.236s      28.4x
+Brightness Adjustment           0.095s     0.006s      17.2x
+Edge Detection                  1.384s     0.038s      36.6x
+Histogram Equalization          0.176s     0.005s      36.0x
 ---------------------------------------------------------------
-TOTAL                          15.123s     0.309s      48.9x
+TOTAL                           8.406s     0.288s      29.2x
 
-🎉 C++ is 48.9x faster than Python!
-   Time saved: 14.8s (97.9%)
+🎉 C++ is 29.2x faster than Python!
+   Time saved: 8.12s (96.6%)
+
+🔥 Biggest speedups:
+   • Edge Detection: 36.6x faster
+   • Histogram Equalization: 36.0x faster
+   • Gaussian Blur: 28.4x faster
 
 ✨ And this required ZERO lines of binding code!
+\`\`\`
+
+### Visual Speedup Comparison
+
+\`\`\`
+Speedup Factors (how many times faster C++ is):
+================================================================================
+
+Edge Detection       ████████████████████████████████████████████  36.6x
+Histogram Eq.        ████████████████████████████████████████      36.0x
+Gaussian Blur        ████████████████████████████████              28.4x
+Brightness           ██████████████████                            17.2x
+Initialization       ██████████                                    13.3x
+================================================================================
 \`\`\`
 
 ## Why is This So Fast?
@@ -279,7 +315,7 @@ Same zero-code approach, same performance gains.
 
 ## Conclusion
 
-We took a CPU-intensive Python program and made it **48.9x faster** by:
+We took a CPU-intensive Python program and made it **29.2x faster** by:
 1. Porting algorithms to C++ (same logic, just compiled)
 2. Running one command to auto-generate bindings
 3. Zero lines of binding code written
