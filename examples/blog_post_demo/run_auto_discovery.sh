@@ -21,33 +21,27 @@ fi
 echo "✓ Reflection compiler detected"
 echo ""
 
-# Step 1: Run auto-discovery
-echo "[1/3] Running auto-discovery on C++ headers..."
+# Step 1: Run auto-discovery (this also compiles!)
+echo "[1/2] Running auto-discovery on C++ headers..."
 echo ""
 
 ../../mirror_bridge_auto . --module image_processor
 
 echo ""
-echo "✓ Auto-discovery complete!"
+echo "✓ Auto-discovery and compilation complete!"
 echo ""
 
-# Step 2: Build the binding
-echo "[2/3] Compiling C++ binding..."
-echo ""
-
-clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
-    -I../.. -I. -fPIC -shared \
-    $(python3-config --includes --ldflags) \
-    image_processor_binding.cpp -o image_processor.so
-
-echo "✓ Binding compiled: image_processor.so"
+# Step 2: Copy the binding to current directory for easier import
+echo "[2/2] Preparing binding for use..."
+cp build/image_processor.so image_processor.so
+echo "✓ Binding ready: image_processor.so"
 echo ""
 
 # Step 3: Quick test
 echo "[3/3] Testing the binding..."
 echo ""
 
-python3 << 'EOF'
+LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:$LD_LIBRARY_PATH python3 << 'EOF'
 import image_processor
 
 # Quick smoke test

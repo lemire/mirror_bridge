@@ -39,17 +39,19 @@ cd /workspace/examples/blog_post_demo
 ### Option A: Run the Complete Demo (Fastest)
 
 \`\`\`bash
-# Generate C++ bindings and run a quick test
+# Step 1: Generate C++ bindings (one-time setup)
 ./run_auto_discovery.sh
 
-# Run the C++ version demo
-python3 demo.py
+# Step 2: Run the C++ version demo
+./run_demo.sh
 
-# Compare Python vs C++ performance
-python3 benchmark_comparison.py
+# Step 3: Compare Python vs C++ performance
+./run_benchmark.sh
 \`\`\`
 
 **That's it!** The C++ version is now running 29.2x faster than Python.
+
+**Note**: The wrapper scripts (`run_demo.sh`, `run_benchmark.sh`) handle setting up the library paths automatically.
 
 ### Step 1: Run Pure Python Benchmark
 
