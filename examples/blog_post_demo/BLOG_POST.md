@@ -50,7 +50,7 @@ class ImageProcessor:
 
 This is classic nested-loop Python code. It works, but...
 
-### Step 2: Profile the Bottlenecks
+### Step 2: Profile and Visualize the Bottlenecks
 
 Let's see where time is spent:
 
