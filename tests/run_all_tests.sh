@@ -71,9 +71,16 @@ echo ""
 
 cd "$TEST_DIR"
 
-# Find all binding .cpp files recursively
+# Find all binding .cpp files recursively (only Python bindings, not JS/Lua)
 while IFS= read -r -d '' binding_file; do
     [ -f "$binding_file" ] || continue
+
+    # Skip JS and Lua test bindings (they have separate build/test systems)
+    case "$binding_file" in
+        */js/*|*/lua/*|*_js.cpp|*_lua.cpp)
+            continue
+            ;;
+    esac
 
     TOTAL_BINDINGS=$((TOTAL_BINDINGS + 1))
 
