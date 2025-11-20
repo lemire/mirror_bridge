@@ -32,8 +32,24 @@ This demo requires the Mirror Bridge Docker environment (for the reflection-enab
 ./start_dev_container.sh
 
 # Inside container
+docker exec -it mirror_bridge_dev bash
 cd /workspace/examples/blog_post_demo
 \`\`\`
+
+### Option A: Run the Complete Demo (Fastest)
+
+\`\`\`bash
+# Generate C++ bindings and run a quick test
+./run_auto_discovery.sh
+
+# Run the C++ version demo
+python3 demo.py
+
+# Compare Python vs C++ performance
+python3 benchmark_comparison.py
+\`\`\`
+
+**That's it!** The C++ version is now running 29.2x faster than Python.
 
 ### Step 1: Run Pure Python Benchmark
 
