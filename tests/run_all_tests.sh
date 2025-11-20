@@ -71,16 +71,9 @@ echo ""
 
 cd "$TEST_DIR"
 
-# Find all binding .cpp files recursively (only Python bindings, not JS/Lua)
+# Find all binding .cpp files recursively
 while IFS= read -r -d '' binding_file; do
     [ -f "$binding_file" ] || continue
-
-    # Skip JS and Lua test bindings (they have separate build/test systems)
-    case "$binding_file" in
-        */js/*|*/lua/*|*_js.cpp|*_lua.cpp)
-            continue
-            ;;
-    esac
 
     TOTAL_BINDINGS=$((TOTAL_BINDINGS + 1))
 
@@ -90,14 +83,30 @@ while IFS= read -r -d '' binding_file; do
     # Get the directory of the binding file for proper includes
     binding_dir=$(dirname "$binding_file")
 
-    echo -e "${BLUE}Building ${module_name}...${NC}"
+    # Determine binding type and set appropriate flags
+    if [[ "$binding_file" == */js/* ]] || [[ "$binding_file" == *_js.cpp ]]; then
+        # JavaScript binding
+        output_ext=".node"
+        includes="-I/usr/include/node"
+        echo -e "${BLUE}Building ${module_name} (JavaScript)...${NC}"
+    elif [[ "$binding_file" == */lua/* ]] || [[ "$binding_file" == *_lua.cpp ]]; then
+        # Lua binding
+        output_ext=".so"
+        includes="-I/usr/include/lua5.4 -llua5.4"
+        echo -e "${BLUE}Building ${module_name} (Lua)...${NC}"
+    else
+        # Python binding (default)
+        output_ext=".so"
+        includes="$(python3-config --includes --ldflags)"
+        echo -e "${BLUE}Building ${module_name} (Python)...${NC}"
+    fi
 
     # Compile the binding - capture output
     # Add both project root and binding dir to include paths
     compile_output=$(cd "$binding_dir" && clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
         -I"$PROJECT_ROOT" -I. -fPIC -shared \
-        $(python3-config --includes --ldflags) \
-        "$(basename "$binding_file")" -o "$BUILD_DIR/${module_name}.so" 2>&1)
+        $includes \
+        "$(basename "$binding_file")" -o "$BUILD_DIR/${module_name}${output_ext}" 2>&1)
 
     compile_exit=$?
 
@@ -192,8 +201,56 @@ while IFS= read -r -d '' test_file; do
     echo ""
 done < <(find "$TEST_DIR" -name "test_*.py" -type f -print0)
 
+# Step 2b: Run JavaScript tests
+echo -e "${YELLOW}[STEP 2b/4] Running JavaScript tests...${NC}"
+echo ""
+
+while IFS= read -r -d '' test_file; do
+    [ -f "$test_file" ] || continue
+
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    test_name=$(basename "$test_file")
+
+    echo -e "${BLUE}Running ${test_name}...${NC}"
+
+    # Run the test from the test directory
+    if (cd "$(dirname "$test_file")" && node "$(basename "$test_file")") > /tmp/test_output.txt 2>&1; then
+        echo -e "${GREEN}✓ Passed: ${test_name}${NC}"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        echo -e "${RED}✗ Failed: ${test_name}${NC}"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        cat /tmp/test_output.txt | sed 's/^/  /'
+    fi
+    echo ""
+done < <(find "$TEST_DIR/js" -name "test_*.js" -type f -print0 2>/dev/null)
+
+# Step 2c: Run Lua tests
+echo -e "${YELLOW}[STEP 2c/4] Running Lua tests...${NC}"
+echo ""
+
+while IFS= read -r -d '' test_file; do
+    [ -f "$test_file" ] || continue
+
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    test_name=$(basename "$test_file")
+
+    echo -e "${BLUE}Running ${test_name}...${NC}"
+
+    # Run the test from the test directory
+    if (cd "$(dirname "$test_file")" && lua5.4 "$(basename "$test_file")") > /tmp/test_output.txt 2>&1; then
+        echo -e "${GREEN}✓ Passed: ${test_name}${NC}"
+        PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+        echo -e "${RED}✗ Failed: ${test_name}${NC}"
+        FAILED_TESTS=$((FAILED_TESTS + 1))
+        cat /tmp/test_output.txt | sed 's/^/  /'
+    fi
+    echo ""
+done < <(find "$TEST_DIR/lua" -name "test_*.lua" -type f -print0 2>/dev/null)
+
 # Step 3: Run shell-based tests (auto-discovery, config-file)
-echo -e "${YELLOW}[STEP 3/3] Running CLI tool tests...${NC}"
+echo -e "${YELLOW}[STEP 3/4] Running CLI tool tests...${NC}"
 echo ""
 
 # Find all test_*.sh files
