@@ -1,6 +1,6 @@
 #include <boost/python.hpp>
 #include <boost/python/suite/indexing/vector_indexing_suite.hpp>
-#include "benchmark_class.hpp"
+#include "../shared/benchmark_class.hpp"
 
 using namespace boost::python;
 

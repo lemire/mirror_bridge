@@ -1,7 +1,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/vector.h>
-#include "benchmark_class.hpp"
+#include "../shared/benchmark_class.hpp"
 
 namespace nb = nanobind;
 

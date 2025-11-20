@@ -212,6 +212,8 @@ int lua_method(lua_State* L);
 // Property Access via Metatables
 // ============================================================================
 
+// No optimized property accessors - keep using reflection-based __index/__newindex
+
 template<typename T>
 int lua_index(lua_State* L) {
     // L[1] = userdata (wrapper), L[2] = key (field name)

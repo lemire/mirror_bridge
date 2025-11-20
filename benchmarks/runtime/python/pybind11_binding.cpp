@@ -1,6 +1,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
-#include "benchmark_class.hpp"
+#include "../shared/benchmark_class.hpp"
 
 namespace py = pybind11;
 

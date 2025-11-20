@@ -1,0 +1,72 @@
+{
+  "mirror_bridge": {
+    "null_call": 35.13447670266032,
+    "arithmetic_int": 43.0570790078491,
+    "arithmetic_double": 43.86512213386595,
+    "string_concat": 63.407743349671364,
+    "string_get": 45.897218864411116,
+    "string_set": 46.512091998010874,
+    "vector_append": 45.41818052530289,
+    "vector_get": 477.97837760299444,
+    "vector_set": 69.48435213416815,
+    "attr_get": 36.050940211862326,
+    "attr_set": 62.84995782189071,
+    "construction": 47.75521298870444
+  },
+  "pybind11": {
+    "null_call": 143.74201260507107,
+    "arithmetic_int": 172.55733152851462,
+    "arithmetic_double": 168.33715001121163,
+    "string_concat": 183.33387887105346,
+    "string_get": 166.88785096630454,
+    "string_set": 154.29110173135996,
+    "vector_append": 158.5786323994398,
+    "vector_get": 610.2491775527596,
+    "vector_set": 203.94348073750734,
+    "attr_get": 134.1614617034793,
+    "attr_set": 184.20140868984163,
+    "construction": 227.87018585950136
+  },
+  "nanobind": {
+    "null_call": 35.35965932533145,
+    "arithmetic_int": 40.15996800735593,
+    "arithmetic_double": 42.1937569975853,
+    "string_concat": 61.58029101788998,
+    "string_get": 46.36384313926101,
+    "string_set": 41.89027473330498,
+    "vector_append": 41.22486338019371,
+    "vector_get": 471.26465011388063,
+    "vector_set": 59.27854683250189,
+    "attr_get": 40.745011903345585,
+    "attr_set": 73.04518977180123,
+    "construction": 56.25343415886164
+  },
+  "swig": {
+    "null_call": 79.74182958714664,
+    "arithmetic_int": 96.95204319432378,
+    "arithmetic_double": 100.37932330742478,
+    "string_concat": 160.0979589857161,
+    "string_get": 98.30270893871784,
+    "string_set": 138.00590904429555,
+    "vector_append": 96.30425833165646,
+    "vector_get": 647.9269778355956,
+    "vector_set": 345.0817475095391,
+    "attr_get": 49.394949804991484,
+    "attr_set": 88.35672228597105,
+    "construction": 326.9118960015476
+  },
+  "boost_python": {
+    "null_call": 0.0,
+    "arithmetic_int": 0.0,
+    "arithmetic_double": 0.0,
+    "string_concat": 0.0,
+    "string_get": 0.0,
+    "string_set": 0.0,
+    "vector_append": 0.0,
+    "vector_get": 0.0,
+    "vector_set": 0.0,
+    "attr_get": 0.0,
+    "attr_set": 0.0,
+    "construction": 0.0
+  }
+}
