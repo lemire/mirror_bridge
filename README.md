@@ -70,77 +70,21 @@ Mirror Bridge is a **header-only library** that uses C++26 reflection (P2996) to
 
 ## Quick Start
 
-### 5-Minute Tutorial
-
-**1. Get the environment (one-time setup)**
 ```bash
+# 1. Get the environment
 ./start_dev_container.sh
-# First run: ~30-60 min to build clang-p2996
-# Future runs: instant
-```
+# Choose option 1 to pull pre-built image (~2 min)
 
-**2. Inside container - verify it works**
-```bash
-cd /workspace
-./tests/run_all_tests.sh
-# Expected: ✓ ALL TESTS PASSED! (12/12)
-```
+# 2. Inside container - verify it works
+cd /workspace && ./tests/run_all_tests.sh
 
-**3. Try an example**
-```bash
+# 3. Try an example
 cd examples/option2
-cat src/calculator.hpp  # Just a normal C++ class
-
-# Generate bindings automatically
 ../../mirror_bridge_auto src/ --module math_module
-
-# Use from Python
 python3 test_option2.py
 ```
 
-**4. Create your own**
-```bash
-cd /workspace
-
-# Write a C++ header
-cat > person.hpp << 'EOF'
-struct Person {
-    std::string name;
-    int age;
-
-    Person() = default;
-    Person(std::string n, int a) : name(n), age(a) {}
-
-    int birth_year(int current_year) { return current_year - age; }
-};
-EOF
-
-# Create binding (one line!)
-cat > person_binding.cpp << 'EOF'
-#include "mirror_bridge.hpp"
-#include "person.hpp"
-
-MIRROR_BRIDGE_MODULE(people,
-    mirror_bridge::bind_class<Person>(m, "Person");
-)
-EOF
-
-# Compile
-clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
-    -I. -fPIC -shared $(python3-config --includes --ldflags) \
-    person_binding.cpp -o build/people.so
-
-# Use from Python
-python3 << 'EOF'
-import sys; sys.path.insert(0, 'build')
-import people
-
-p = people.Person("Alice", 30)
-print(f"{p.name} was born in {p.birth_year(2024)}")  # Alice was born in 1994
-EOF
-```
-
-That's it! See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guide.
+**That's it!** See [QUICKSTART.md](QUICKSTART.md) for a detailed walkthrough.
 
 ## Two Approaches to Auto-Generation
 
