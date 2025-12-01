@@ -314,6 +314,12 @@ inline bool from_python(PyObject* obj, T& out) {
     return true;
 }
 
+// Optimized: Convert vector<unsigned char> to Python bytes (not list!)
+// This is ~50x faster than converting to a list
+inline PyObject* to_python(const std::vector<unsigned char>& data) {
+    return PyBytes_FromStringAndSize(reinterpret_cast<const char*>(data.data()), data.size());
+}
+
 // Convert C++ containers to Python lists
 // Recursively converts each element using to_python
 template<Container T>
@@ -331,6 +337,40 @@ PyObject* to_python(const T& container) {
         PyList_SET_ITEM(list, index++, py_item);
     }
     return list;
+}
+
+// Forward declare PyWrapper for use in from_python (will be fully defined later)
+template<typename T> struct PyWrapper;
+
+// Convert Python wrapped objects to C++ types
+// This handles cases like Sphere(Vec3(...), double, Vec3(...))
+// where Vec3 is a bound C++ class
+// IMPORTANT: Must be declared BEFORE Container from_python so it's available for element conversion
+//
+// NOTE: We use std::remove_cvref_t<T> to strip const/reference qualifiers.
+// This is critical for methods like dot(const Vec3& other) where the parameter
+// type is "const Vec3&" but the PyWrapper stores a plain Vec3*.
+template<typename T>
+    requires (std::is_class_v<std::remove_cvref_t<T>> &&
+              !Arithmetic<T> && !StringLike<T> && !SmartPointer<T> && !Container<T>)
+inline bool from_python(PyObject* obj, T& out) {
+    using CleanT = std::remove_cvref_t<T>;
+
+    if (!obj) {
+        return false;
+    }
+
+    // Cast to PyWrapper with cleaned type (no const/ref qualifiers)
+    auto* wrapper = reinterpret_cast<PyWrapper<CleanT>*>(obj);
+
+    // Minimal validation: just check if the pointer is non-null
+    if (!wrapper->cpp_object) {
+        return false;
+    }
+
+    // Copy the C++ object
+    out = *wrapper->cpp_object;
+    return true;
 }
 
 // Convert Python lists to C++ containers
@@ -447,9 +487,22 @@ public:
         }
     }
 
+    // Get Python type object by name
+    PyTypeObject* get_py_type(const std::string& name) const {
+        auto it = classes_.find(name);
+        return (it != classes_.end()) ? it->second.py_type : nullptr;
+    }
+
 private:
     Registry() = default;
     std::unordered_map<std::string, ClassMetadata> classes_;
+};
+
+// Type-based registry for looking up PyTypeObject* by C++ type
+// Uses a static variable per type T to store the registered PyTypeObject*
+template<typename T>
+struct TypeRegistry {
+    static inline PyTypeObject* py_type = nullptr;
 };
 
 // ============================================================================
@@ -569,11 +622,60 @@ struct MemberFunctionCache {
     static constexpr std::size_t count = compute_count();
 };
 
+// Cache for static member functions - instantiated once per type T
+template<typename T>
+struct StaticMemberFunctionCache {
+    // Helper to check if a member is a bindable static method
+    static consteval bool is_bindable_static_method(std::meta::info member) {
+        return std::meta::is_function(member) &&
+               std::meta::is_static_member(member) &&
+               !std::meta::is_constructor(member) &&
+               !std::meta::is_special_member_function(member) &&
+               !std::meta::is_operator_function(member);
+    }
+
+    // Count static methods - computed once at compile time
+    static consteval std::size_t compute_count() {
+        auto all_members = std::meta::members_of(^^T, std::meta::access_context::current());
+        std::size_t count = 0;
+        for (auto member : all_members) {
+            if (is_bindable_static_method(member)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // Get the Nth static method - computed once per Index
+    static consteval auto get_at_index(std::size_t Index) {
+        auto all_members = std::meta::members_of(^^T, std::meta::access_context::current());
+        std::size_t func_index = 0;
+        for (auto member : all_members) {
+            if (is_bindable_static_method(member)) {
+                if (func_index == Index) {
+                    return member;
+                }
+                func_index++;
+            }
+        }
+        // Should never reach here if Index < count
+        return all_members[0];
+    }
+
+    static constexpr std::size_t count = compute_count();
+};
+
 // Helper templates for member function reflection
 // Now use the cache instead of calling members_of repeatedly
 template<typename T>
 consteval std::size_t get_member_function_count() {
     return MemberFunctionCache<T>::count;
+}
+
+// Helper templates for static member function reflection
+template<typename T>
+consteval std::size_t get_static_member_function_count() {
+    return StaticMemberFunctionCache<T>::count;
 }
 
 // Get the Nth member function by using cached lookup
@@ -582,9 +684,21 @@ consteval auto get_member_function() {
     return MemberFunctionCache<T>::get_at_index(Index);
 }
 
+// Get the Nth static member function by using cached lookup
+template<typename T, std::size_t Index>
+consteval auto get_static_member_function() {
+    return StaticMemberFunctionCache<T>::get_at_index(Index);
+}
+
 template<typename T, std::size_t Index>
 consteval const char* get_member_function_name() {
     constexpr auto func = get_member_function<T, Index>();
+    return std::meta::identifier_of(func).data();
+}
+
+template<typename T, std::size_t Index>
+consteval const char* get_static_member_function_name() {
+    constexpr auto func = get_static_member_function<T, Index>();
     return std::meta::identifier_of(func).data();
 }
 
@@ -626,10 +740,25 @@ consteval auto get_method_param_type() {
     return std::meta::type_of(params[ParamIndex]);
 }
 
+// Static method parameter type - similar to instance methods
+template<typename T, std::size_t FuncIndex, std::size_t ParamIndex>
+consteval auto get_static_method_param_type() {
+    constexpr auto static_func = get_static_member_function<T, FuncIndex>();
+    auto params = std::meta::parameters_of(static_func);
+    return std::meta::type_of(params[ParamIndex]);
+}
+
 template<typename T, std::size_t FuncIndex>
 consteval auto get_method_return_type() {
     constexpr auto member_func = get_member_function<T, FuncIndex>();
     return std::meta::return_type_of(member_func);
+}
+
+// Static method return type
+template<typename T, std::size_t FuncIndex>
+consteval auto get_static_method_return_type() {
+    constexpr auto static_func = get_static_member_function<T, FuncIndex>();
+    return std::meta::return_type_of(static_func);
 }
 
 // Generate a type signature for a given class using reflection
@@ -1018,6 +1147,76 @@ PyObject* py_method(PyObject* self, PyObject* args) {
 }
 
 // ============================================================================
+// Static Method Support
+// ============================================================================
+
+// Helper to get static method parameter count
+// Note: Static methods are plain functions, not member functions
+template<typename T, std::size_t Index>
+consteval std::size_t get_method_param_count_static() {
+    constexpr auto func = get_static_member_function<T, Index>();
+    // Get the function type directly from the splicer
+    using FuncType = decltype([:func:]);
+    // Count parameters - for static functions this is straightforward
+    return std::meta::parameters_of(func).size();
+}
+
+// Helper to call static methods (no `self` parameter)
+template<typename T, std::size_t Index, std::size_t... Is>
+PyObject* call_static_method_impl(PyObject* args, std::index_sequence<Is...>) {
+    constexpr auto static_func = get_static_member_function<T, Index>();
+    constexpr auto return_type = get_static_method_return_type<T, Index>();
+    using ReturnType = typename [:return_type:];
+
+    // Create tuple with exact types from reflection
+    std::tuple<std::remove_cvref_t<typename [:get_static_method_param_type<T, Index, Is>():]>...> cpp_args;
+
+    // Extract parameters from Python tuple
+    bool success = true;
+    ([&] {
+        if (!success) return;
+        if (!from_python(PyTuple_GET_ITEM(args, Is), std::get<Is>(cpp_args))) {
+            PyErr_Format(PyExc_TypeError, "Argument %zu type conversion failed", Is);
+            success = false;
+        }
+    }(), ...);
+
+    if (!success) {
+        return nullptr;
+    }
+
+    // Call the static C++ method using reflection splicer
+    if constexpr (std::is_void_v<ReturnType>) {
+        [:static_func:](std::move(std::get<Is>(cpp_args))...);
+        Py_RETURN_NONE;
+    } else {
+        ReturnType result = [:static_func:](std::move(std::get<Is>(cpp_args))...);
+        return to_python(result);
+    }
+}
+
+// Python static method wrapper
+template<typename T, std::size_t Index>
+PyObject* py_static_method(PyObject* /* self */, PyObject* args) {
+    constexpr std::size_t param_count = get_method_param_count_static<T, Index>();
+
+    if (PyTuple_Size(args) != static_cast<Py_ssize_t>(param_count)) {
+        PyErr_SetString(PyExc_TypeError, "Incorrect number of arguments");
+        return nullptr;
+    }
+
+    try {
+        return call_static_method_impl<T, Index>(args, std::make_index_sequence<param_count>{});
+    } catch (const std::exception& e) {
+        PyErr_SetString(PyExc_RuntimeError, e.what());
+        return nullptr;
+    } catch (...) {
+        PyErr_SetString(PyExc_RuntimeError, "Unknown C++ exception");
+        return nullptr;
+    }
+}
+
+// ============================================================================
 // Method Overloading Support via Name Mangling
 // ============================================================================
 
@@ -1151,6 +1350,31 @@ auto generate_methods(std::index_sequence<Indices...>) {
     return methods;
 }
 
+// Generate Python static methods for all static member functions of a class
+template<typename T, std::size_t... Indices>
+auto generate_static_methods(std::index_sequence<Indices...>) {
+    constexpr std::size_t count = sizeof...(Indices);
+
+    // Build methods array
+    std::array<PyMethodDef, count + 1> methods{};
+
+    // Populate entries
+    ([&] {
+        constexpr auto func_name = get_static_member_function_name<T, Indices>();
+        methods[Indices] = PyMethodDef{
+            .ml_name = func_name,
+            .ml_meth = reinterpret_cast<PyCFunction>(py_static_method<T, Indices>),
+            .ml_flags = METH_VARARGS,  // No METH_STATIC - we wrap with PyStaticMethod_New instead
+            .ml_doc = nullptr
+        };
+    }(), ...);
+
+    // Sentinel entry
+    methods[count] = PyMethodDef{nullptr, nullptr, 0, nullptr};
+
+    return methods;
+}
+
 // ============================================================================
 // Nested Bindable Conversion: dict vs. Wrapper Object Semantics
 // ============================================================================
@@ -1273,12 +1497,31 @@ struct ConversionOverloadGenerator {
 
 // Auto-generated conversion overloads using SFINAE (not requires clause)
 // SFINAE ensures clean template symbols without constraint mangling
+//
+// UPDATED: When a type is bound via bind_class<T>, we return a proper wrapper
+// object instead of a dict. This allows methods to work on returned objects.
 template<typename T>
 std::enable_if_t<
     Bindable<T> && !StringLike<T> && !Container<T> && !Arithmetic<T> && !SmartPointer<T>,
     PyObject*
 >
 to_python(const T& obj) {
+    using CleanT = std::remove_cvref_t<T>;
+
+    // Check if this type has been registered with bind_class
+    PyTypeObject* py_type = TypeRegistry<CleanT>::py_type;
+    if (py_type) {
+        // Create a wrapper object with a copy of the C++ object
+        auto* wrapper = reinterpret_cast<PyWrapper<CleanT>*>(py_type->tp_alloc(py_type, 0));
+        if (!wrapper) {
+            return nullptr;
+        }
+        wrapper->cpp_object = new CleanT(obj);  // Copy the object
+        wrapper->owns = true;
+        return reinterpret_cast<PyObject*>(wrapper);
+    }
+
+    // Fall back to dict conversion for unregistered types
     return ConversionOverloadGenerator<T>::to_python_impl(obj);
 }
 
@@ -1307,9 +1550,13 @@ PyTypeObject* bind_class(PyObject* module, const char* name, const char* file_ha
     // Generate getters/setters using reflection
     static auto getsetters = generate_getsetters<T>(std::make_index_sequence<member_count>{});
 
-    // Generate methods using reflection
+    // Generate instance methods using reflection
     constexpr std::size_t method_count = get_member_function_count<T>();
     static auto methods = generate_methods<T>(std::make_index_sequence<method_count>{});
+
+    // Generate static methods using reflection (will be added separately to type dict)
+    constexpr std::size_t static_method_count = get_static_member_function_count<T>();
+    static auto static_methods = generate_static_methods<T>(std::make_index_sequence<static_method_count>{});
 
     // Check if class has parameterized constructors
     constexpr std::size_t ctor_count = get_constructor_count<T>();
@@ -1347,6 +1594,29 @@ PyTypeObject* bind_class(PyObject* module, const char* name, const char* file_ha
         return nullptr;
     }
 
+    // Add static methods to the type dictionary
+    // Python's PyMethodDef with METH_STATIC doesn't work - we need to manually wrap them
+    if constexpr (static_method_count > 0) {
+        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            ([&] {
+                constexpr auto func_name = get_static_member_function_name<T, Is>();
+                // Create a PyCFunction for the static method
+                PyObject* func = PyCFunction_New(&static_methods[Is], nullptr);
+                if (func) {
+                    // Wrap it as a static method
+                    PyObject* static_method = PyStaticMethod_New(func);
+                    Py_DECREF(func);
+                    if (static_method) {
+                        // Add to type dict
+                        PyObject* type_dict = type_object.tp_dict;
+                        PyDict_SetItemString(type_dict, func_name, static_method);
+                        Py_DECREF(static_method);
+                    }
+                }
+            }(), ...);
+        }(std::make_index_sequence<static_method_count>{});
+    }
+
     Py_INCREF(&type_object);
     if (PyModule_AddObject(module, name, reinterpret_cast<PyObject*>(&type_object)) < 0) {
         Py_DECREF(&type_object);
@@ -1355,6 +1625,9 @@ PyTypeObject* bind_class(PyObject* module, const char* name, const char* file_ha
 
     // Update registry with the Python type object
     Registry::instance().set_py_type(name, &type_object);
+
+    // Register type in TypeRegistry for type-based lookup in to_python
+    TypeRegistry<T>::py_type = &type_object;
 
     return &type_object;
 }
