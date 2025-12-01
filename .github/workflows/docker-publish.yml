@@ -10,7 +10,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  # Must be lowercase for Docker registry
+  IMAGE_NAME: franciscothiesen/mirror_bridge
 
 jobs:
   build:
