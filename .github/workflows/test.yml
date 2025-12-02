@@ -1,0 +1,97 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: franciscothiesen/mirror_bridge
+
+jobs:
+  test-python:
+    name: Python Bindings
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/franciscothiesen/mirror_bridge:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify reflection support
+        run: |
+          echo '#include <meta>' > /tmp/test.cpp
+          echo 'int main() { return 0; }' >> /tmp/test.cpp
+          clang++ -std=c++2c -freflection -stdlib=libc++ /tmp/test.cpp -o /tmp/test
+          echo "✓ Reflection support verified"
+
+      - name: Run Python tests
+        run: |
+          cd /github/workspace
+
+          # Build and test Vec3 static method test
+          echo "=== Building Vec3 test ==="
+          cd tests/static_method_test
+          ./build_vec3_test.sh
+
+          echo ""
+          echo "=== Running Vec3 tests ==="
+          python3 test_vec3.py
+
+      - name: Run full test suite
+        run: |
+          cd /github/workspace
+          ./tests/run_all_tests.sh
+
+  test-lua:
+    name: Lua Bindings
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/franciscothiesen/mirror_bridge:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Lua is installed
+        run: |
+          lua5.4 -v || (echo "Lua 5.4 not found" && exit 1)
+          echo "✓ Lua 5.4 available"
+
+      - name: Run Lua tests
+        run: |
+          cd /github/workspace/tests/lua/static_method_test
+          ./build_and_test.sh
+
+  test-javascript:
+    name: JavaScript Bindings
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/franciscothiesen/mirror_bridge:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Node.js is installed
+        run: |
+          node --version || (echo "Node.js not found" && exit 1)
+          npm --version || (echo "npm not found" && exit 1)
+          echo "✓ Node.js and npm available"
+
+      - name: Run JavaScript tests
+        run: |
+          cd /github/workspace/tests/js/static_method_test
+          ./build_and_test.sh
