@@ -1,4 +1,4 @@
-const addon = require('../../../../build/point2d');
+const addon = require('../../../../build/point2d_js.node');
 const assert = require('assert');
 
 console.log('=== Point2D JavaScript Binding Test ===\n');

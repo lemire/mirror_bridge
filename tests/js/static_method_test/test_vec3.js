@@ -2,7 +2,7 @@
 // 1. Static methods (hot_loop, add_vectors)
 // 2. Methods with const reference parameters (dot)
 
-const vec3 = require('./build/Release/vec3.node');
+const vec3 = require('../../../build/vec3_js.node');
 
 console.log("============================================================");
 console.log("Vec3 JavaScript Binding Tests");

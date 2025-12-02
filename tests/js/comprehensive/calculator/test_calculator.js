@@ -1,4 +1,4 @@
-const addon = require('../../../../build/calculator');
+const addon = require('../../../../build/calculator_js.node');
 const assert = require('assert');
 
 console.log('=== Calculator JavaScript Comprehensive Test ===\n');
