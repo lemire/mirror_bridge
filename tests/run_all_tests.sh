@@ -18,7 +18,10 @@ TEST_DIR="$PROJECT_ROOT/tests"
 BINDING_SCRIPT="$PROJECT_ROOT/build_bindings.sh"
 
 # Set up environment for libc++ (needed for reflection support)
-export LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:/usr/local/lib/x86_64-unknown-linux-gnu:$LD_LIBRARY_PATH
+
+# Set up Lua module path to find built .so files (with _lua suffix)
+export LUA_CPATH="$BUILD_DIR/?_lua.so;;"
 
 # Counters
 TOTAL_BINDINGS=0
@@ -86,16 +89,19 @@ while IFS= read -r -d '' binding_file; do
     # Determine binding type and set appropriate flags
     if [[ "$binding_file" == */js/* ]] || [[ "$binding_file" == *_js.cpp ]]; then
         # JavaScript binding
+        output_name="${module_name}_js"
         output_ext=".node"
         includes="-I/usr/include/node"
         echo -e "${BLUE}Building ${module_name} (JavaScript)...${NC}"
     elif [[ "$binding_file" == */lua/* ]] || [[ "$binding_file" == *_lua.cpp ]]; then
-        # Lua binding
+        # Lua binding - use _lua suffix to avoid collision with Python bindings
+        output_name="${module_name}_lua"
         output_ext=".so"
         includes="-I/usr/include/lua5.4 -llua5.4"
         echo -e "${BLUE}Building ${module_name} (Lua)...${NC}"
     else
         # Python binding (default)
+        output_name="${module_name}"
         output_ext=".so"
         includes="$(python3-config --includes --ldflags)"
         echo -e "${BLUE}Building ${module_name} (Python)...${NC}"
@@ -106,7 +112,7 @@ while IFS= read -r -d '' binding_file; do
     compile_output=$(cd "$binding_dir" && clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
         -I"$PROJECT_ROOT" -I. -fPIC -shared \
         $includes \
-        "$(basename "$binding_file")" -o "$BUILD_DIR/${module_name}${output_ext}" 2>&1)
+        "$(basename "$binding_file")" -o "$BUILD_DIR/${output_name}${output_ext}" 2>&1)
 
     compile_exit=$?
 
@@ -115,7 +121,7 @@ while IFS= read -r -d '' binding_file; do
 
     # Check if compilation succeeded
     if [ $compile_exit -eq 0 ]; then
-        echo -e "${GREEN}✓ Built: ${module_name}.so${NC}"
+        echo -e "${GREEN}✓ Built: ${output_name}${output_ext}${NC}"
         BUILT_BINDINGS=$((BUILT_BINDINGS + 1))
     else
         echo -e "${RED}✗ Failed: ${module_name}${NC}"
