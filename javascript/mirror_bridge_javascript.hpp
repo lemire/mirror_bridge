@@ -228,7 +228,7 @@ template<typename T>
 bool from_javascript(napi_env env, napi_value value, T& out) {
     using CleanT = std::remove_cvref_t<T>;
 
-    // Try to unwrap as a JsWrapper first
+    // Try to unwrap as a JsWrapper
     JsWrapper<CleanT>* wrapper = nullptr;
     napi_status status = napi_unwrap(env, value, reinterpret_cast<void**>(&wrapper));
 
@@ -237,8 +237,7 @@ bool from_javascript(napi_env env, napi_value value, T& out) {
         return true;
     }
 
-    // Fall back to object/dict conversion
-    return JsConversionHelper<CleanT>::from_javascript_impl(env, value, out);
+    return false;
 }
 
 // ============================================================================
