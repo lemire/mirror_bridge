@@ -435,7 +435,8 @@ clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
 
 clang++ -std=c++20 -stdlib=libc++ \
     -O3 -DNDEBUG \
-    -I/usr/include/python3.10 -I"$BENCHMARK_DIR/runtime/shared" -fPIC -shared \
+    -I"$(python3 -c 'import pybind11; print(pybind11.get_include())')" \
+    -I"$BENCHMARK_DIR/runtime/shared" -fPIC -shared \
     $(python3-config --includes --ldflags) \
     pybind11_binding.cpp -o "$BUILD_DIR/bench_pb.so" 2>&1 | grep -v "mixture of designated" || true
 

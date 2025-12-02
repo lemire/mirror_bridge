@@ -204,7 +204,11 @@ if __name__ == '__main__':
 
     if mode == 'run':
         print("Loading modules...")
-        sys.path.insert(0, '../../build')
+        # Use absolute path to build directory
+        import os
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        build_dir = os.path.join(script_dir, '..', '..', '..', 'build')
+        sys.path.insert(0, os.path.abspath(build_dir))
 
         try:
             import bench_mb
