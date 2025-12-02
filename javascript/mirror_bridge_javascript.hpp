@@ -1,8 +1,9 @@
 #pragma once
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Mirror Bridge JavaScript - Node.js N-API Bindings via C++26 Reflection
+// Mirror Bridge JavaScript - JavaScript Bindings for C++ Code via C++26 Reflection
 // ═══════════════════════════════════════════════════════════════════════════
+// Generates Node.js bindings that expose C++ classes to JavaScript.
 
 #include "../core/mirror_bridge_core.hpp"
 #include <node_api.h>

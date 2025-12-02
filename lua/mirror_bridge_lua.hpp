@@ -1,8 +1,9 @@
 #pragma once
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Mirror Bridge Lua - Lua C API Bindings via C++26 Reflection
+// Mirror Bridge Lua - Lua Bindings for C++ Code via C++26 Reflection
 // ═══════════════════════════════════════════════════════════════════════════
+// Generates Lua bindings that expose C++ classes to Lua.
 
 #include "../core/mirror_bridge_core.hpp"
 extern "C" {

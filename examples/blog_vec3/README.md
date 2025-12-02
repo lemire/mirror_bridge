@@ -1,6 +1,6 @@
 # Vec3 Example (from Blog Post)
 
-This example accompanies the blog post ["mirror-bridge - making C++ bindings frictionless"](../../blog_draft/2024-11-29-Mirror-Bridge.md).
+This example accompanies the blog post ["mirror-bridge - making Python bindings for C++ frictionless"](../../blog_draft/2025-12-01-Mirror-Bridge.md).
 
 It demonstrates:
 1. How to use `mirror_bridge_auto` to generate Python bindings

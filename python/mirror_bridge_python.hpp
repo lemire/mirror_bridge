@@ -1,8 +1,10 @@
 #pragma once
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Mirror Bridge - Automatic C++ to Python Bindings via C++26 Reflection
+// Mirror Bridge - Automatic Python Bindings for C++ Code via C++26 Reflection
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// Generates Python bindings that expose C++ classes to Python.
 //
 // A showcase of modern C++26 techniques for zero-overhead metaprogramming:
 //

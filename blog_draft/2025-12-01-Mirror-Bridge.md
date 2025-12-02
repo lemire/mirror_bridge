@@ -1,6 +1,6 @@
 ---
 layout: post
-title: mirror-bridge - making C++ bindings frictionless
+title: mirror-bridge - making Python bindings for C++ frictionless
 tags: Modern C++, Python, Bindings, Reflection, C++26, Performance
 ---
 
