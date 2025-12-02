@@ -1,0 +1,13 @@
+{
+  "name": "vec3-test",
+  "version": "1.0.0",
+  "description": "Test Vec3 JavaScript bindings",
+  "main": "test_vec3.js",
+  "scripts": {
+    "build": "node-gyp rebuild",
+    "test": "node test_vec3.js"
+  },
+  "dependencies": {
+    "node-addon-api": "^7.0.0"
+  }
+}
