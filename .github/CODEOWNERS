@@ -1,0 +1,8 @@
+# Mirror Bridge Code Owners
+# These users must approve all PRs before merging
+
+# Global rule - maintainers must approve all changes
+* @FranciscoThiesen
+
+# Add more maintainers as needed:
+# * @FranciscoThiesen @other-maintainer @another-maintainer
