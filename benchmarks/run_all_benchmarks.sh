@@ -421,7 +421,7 @@ echo -e "${YELLOW}  PART 2: Runtime Performance${NC}"
 echo -e "${YELLOW}========================================${NC}"
 echo ""
 
-cd "$BENCHMARK_DIR/runtime"
+cd "$BENCHMARK_DIR/runtime/python"
 
 # Build runtime benchmark modules
 echo "Building runtime benchmark modules..."
@@ -429,40 +429,55 @@ echo ""
 
 clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
     -O3 -DNDEBUG \
-    -I"$PROJECT_ROOT" -fPIC -shared \
+    -I"$PROJECT_ROOT" -I"$BENCHMARK_DIR/runtime/shared" -fPIC -shared \
     $(python3-config --includes --ldflags) \
     mirror_bridge_binding.cpp -o "$BUILD_DIR/bench_mb.so" 2>&1 | grep -v "mixture of designated" || true
 
 clang++ -std=c++20 -stdlib=libc++ \
     -O3 -DNDEBUG \
-    -I/usr/include/python3.10 -fPIC -shared \
+    -I/usr/include/python3.10 -I"$BENCHMARK_DIR/runtime/shared" -fPIC -shared \
     $(python3-config --includes --ldflags) \
     pybind11_binding.cpp -o "$BUILD_DIR/bench_pb.so" 2>&1 | grep -v "mixture of designated" || true
 
-# Build nanobind runtime module (reuse pre-compiled stub)
-clang++ -std=c++17 -stdlib=libc++ \
-    -O3 -DNDEBUG \
-    -I/usr/local/nanobind/include \
-    -I/usr/local/nanobind/ext/robin_map/include \
-    -fPIC -shared \
-    $(python3-config --includes --ldflags) \
-    nanobind_binding.cpp \
-    "$BUILD_DIR/nb_stub.o" \
-    -o "$BUILD_DIR/bench_nb.so" 2>&1 | grep -v "mixture of designated" || true
+# Build nanobind runtime module (reuse pre-compiled stub if available)
+if [ -f "$BUILD_DIR/nb_stub.o" ]; then
+    clang++ -std=c++17 -stdlib=libc++ \
+        -O3 -DNDEBUG \
+        -I/usr/local/nanobind/include \
+        -I/usr/local/nanobind/ext/robin_map/include \
+        -I"$BENCHMARK_DIR/runtime/shared" \
+        -fPIC -shared \
+        $(python3-config --includes --ldflags) \
+        nanobind_binding.cpp \
+        "$BUILD_DIR/nb_stub.o" \
+        -o "$BUILD_DIR/bench_nb.so" 2>&1 | grep -v "mixture of designated" || true
+else
+    clang++ -std=c++17 -stdlib=libc++ \
+        -O3 -DNDEBUG \
+        -I/usr/local/include \
+        -I"$BENCHMARK_DIR/runtime/shared" \
+        -fPIC -shared \
+        $(python3-config --includes --ldflags) \
+        nanobind_binding.cpp \
+        -o "$BUILD_DIR/bench_nb.so" 2>&1 | grep -v "mixture of designated" || true
+fi
 
 # Build SWIG runtime module
-swig -c++ -python -o "$BUILD_DIR/swig_binding_wrap.cpp" swig_binding.i 2>/dev/null || true
+swig -c++ -python -I"$BENCHMARK_DIR/runtime/shared" -o "$BUILD_DIR/swig_binding_wrap.cpp" swig_binding.i 2>/dev/null || true
 clang++ -std=c++20 -stdlib=libc++ \
     -O3 -DNDEBUG \
+    -I"$BENCHMARK_DIR/runtime/shared" \
     -fPIC -shared \
     $(python3-config --includes --ldflags) \
     "$BUILD_DIR/swig_binding_wrap.cpp" \
     -o "$BUILD_DIR/_bench_swig.so" 2>&1 | grep -v "mixture of designated" || true
+# Copy Python wrapper for SWIG
+cp "$BUILD_DIR/bench_swig.py" "$BUILD_DIR/" 2>/dev/null || true
 
 # Try to build Boost.Python module (may fail with libc++)
 if clang++ -std=c++20 -stdlib=libc++ \
     -O3 -DNDEBUG \
-    -I/usr/include/python3.10 -fPIC -shared \
+    -I/usr/include/python3.10 -I"$BENCHMARK_DIR/runtime/shared" -fPIC -shared \
     $(python3-config --includes --ldflags) \
     -lboost_python310 \
     boost_python_binding.cpp -o "$BUILD_DIR/bench_bp.so" 2>&1 | grep -v "mixture of designated" > /dev/null; then
@@ -473,7 +488,7 @@ fi
 echo ""
 
 echo "Running runtime benchmarks (this may take a few minutes)..."
-export LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:/usr/local/lib/x86_64-unknown-linux-gnu:$LD_LIBRARY_PATH
 python3 run_runtime_benchmarks.py run
 
 # Summary
