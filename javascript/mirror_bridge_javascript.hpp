@@ -210,13 +210,36 @@ bool from_javascript(napi_env env, napi_value value, T& out) {
     return true;
 }
 
-// Forward declaration for Bindable types
+// Forward declaration for JsWrapper (needed for from_javascript with wrapped objects)
+template<typename T> struct JsWrapper;
+
+// Type-based registry for looking up napi constructor by C++ type
 template<typename T>
-std::enable_if_t<
-    Bindable<T> && !StringLike<T> && !Container<T> && !Arithmetic<T> && !SmartPointer<T>,
-    bool
->
-from_javascript(napi_env env, napi_value value, T& out);
+struct JsTypeRegistry {
+    static inline napi_ref constructor_ref = nullptr;
+    static inline napi_env cached_env = nullptr;
+};
+
+// Convert JavaScript wrapped objects to C++ types
+// Handles const reference parameters like dot(const Vec3& other)
+template<typename T>
+    requires (std::is_class_v<std::remove_cvref_t<T>> &&
+              !Arithmetic<T> && !StringLike<T> && !SmartPointer<T> && !Container<T>)
+bool from_javascript(napi_env env, napi_value value, T& out) {
+    using CleanT = std::remove_cvref_t<T>;
+
+    // Try to unwrap as a JsWrapper first
+    JsWrapper<CleanT>* wrapper = nullptr;
+    napi_status status = napi_unwrap(env, value, reinterpret_cast<void**>(&wrapper));
+
+    if (status == napi_ok && wrapper && wrapper->cpp_object) {
+        out = *wrapper->cpp_object;
+        return true;
+    }
+
+    // Fall back to object/dict conversion
+    return JsConversionHelper<CleanT>::from_javascript_impl(env, value, out);
+}
 
 // ============================================================================
 // Property Accessor (Getter)
@@ -339,6 +362,58 @@ napi_value js_method(napi_env env, napi_callback_info info) {
 }
 
 // ============================================================================
+// Static Method Binding
+// ============================================================================
+
+template<typename T, std::size_t FuncIndex, std::size_t... Is>
+napi_value call_static_method_impl(napi_env env, napi_value* args, std::index_sequence<Is...>) {
+    constexpr auto member_func = get_static_member_function<T, FuncIndex>();
+    constexpr auto return_type = get_static_method_return_type<T, FuncIndex>();
+    using ReturnType = typename [:return_type:];
+
+    std::tuple<std::remove_cvref_t<typename [:get_static_method_param_type<T, FuncIndex, Is>():]>...> cpp_args;
+
+    bool success = true;
+    ([&] {
+        if (!success) return;
+        if (!from_javascript(env, args[Is], std::get<Is>(cpp_args))) {
+            success = false;
+        }
+    }(), ...);
+
+    if (!success) {
+        napi_throw_error(env, nullptr, "Argument type conversion failed");
+        return nullptr;
+    }
+
+    if constexpr (std::is_void_v<ReturnType>) {
+        [:member_func:](std::move(std::get<Is>(cpp_args))...);
+        napi_value undefined;
+        napi_get_undefined(env, &undefined);
+        return undefined;
+    } else {
+        ReturnType result = [:member_func:](std::move(std::get<Is>(cpp_args))...);
+        return to_javascript(env, result);
+    }
+}
+
+template<typename T, std::size_t Index>
+napi_value js_static_method(napi_env env, napi_callback_info info) {
+    constexpr std::size_t param_count = get_static_method_param_count<T, Index>();
+
+    size_t argc = param_count;
+    napi_value args[param_count > 0 ? param_count : 1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    if (argc != param_count) {
+        napi_throw_error(env, nullptr, "Incorrect number of arguments");
+        return nullptr;
+    }
+
+    return call_static_method_impl<T, Index>(env, args, std::make_index_sequence<param_count>{});
+}
+
+// ============================================================================
 // Finalizer (Destructor)
 // ============================================================================
 
@@ -439,6 +514,29 @@ std::enable_if_t<
     napi_value
 >
 to_javascript(napi_env env, const T& obj) {
+    using CleanT = std::remove_cvref_t<T>;
+
+    // Check if this type has been registered with bind_class
+    if (JsTypeRegistry<CleanT>::constructor_ref && JsTypeRegistry<CleanT>::cached_env == env) {
+        // Get the constructor from the reference
+        napi_value constructor;
+        napi_get_reference_value(env, JsTypeRegistry<CleanT>::constructor_ref, &constructor);
+
+        // Create a new instance
+        napi_value instance;
+        napi_new_instance(env, constructor, 0, nullptr, &instance);
+
+        // Unwrap and copy the object
+        JsWrapper<CleanT>* wrapper;
+        napi_unwrap(env, instance, reinterpret_cast<void**>(&wrapper));
+        if (wrapper && wrapper->cpp_object) {
+            *wrapper->cpp_object = obj;
+        }
+
+        return instance;
+    }
+
+    // Fall back to object conversion for unregistered types
     return JsConversionHelper<T>::to_javascript_impl(env, obj);
 }
 
@@ -459,6 +557,7 @@ template<Bindable T>
 napi_value bind_class(napi_env env, napi_value exports, const char* name) {
     constexpr std::size_t member_count = get_data_member_count<T>();
     constexpr std::size_t method_count = get_member_function_count<T>();
+    constexpr std::size_t static_method_count = get_static_member_function_count<T>();
 
     // Create constructor
     napi_value constructor;
@@ -472,6 +571,10 @@ napi_value bind_class(napi_env env, napi_value exports, const char* name) {
         nullptr,
         &constructor
     );
+
+    // Store constructor reference for type registry (used by to_javascript)
+    napi_create_reference(env, constructor, 1, &JsTypeRegistry<T>::constructor_ref);
+    JsTypeRegistry<T>::cached_env = env;
 
     // Add properties (getters/setters)
     [&]<std::size_t... Is>(std::index_sequence<Is...>) {
@@ -492,7 +595,7 @@ napi_value bind_class(napi_env env, napi_value exports, const char* name) {
         }(), ...);
     }(std::make_index_sequence<member_count>{});
 
-    // Add methods
+    // Add instance methods
     [&]<std::size_t... Is>(std::index_sequence<Is...>) {
         ([&] {
             constexpr auto method_name_sv = std::meta::identifier_of(get_member_function<T, Is>());
@@ -506,6 +609,21 @@ napi_value bind_class(napi_env env, napi_value exports, const char* name) {
             napi_set_named_property(env, prototype, method_name, fn);
         }(), ...);
     }(std::make_index_sequence<method_count>{});
+
+    // Add static methods directly to the constructor
+    if constexpr (static_method_count > 0) {
+        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            ([&] {
+                constexpr auto method_name = get_static_member_function_name<T, Is>();
+
+                napi_value fn;
+                napi_create_function(env, method_name, NAPI_AUTO_LENGTH, js_static_method<T, Is>, nullptr, &fn);
+
+                // Add to constructor (not prototype) for static methods
+                napi_set_named_property(env, constructor, method_name, fn);
+            }(), ...);
+        }(std::make_index_sequence<static_method_count>{});
+    }
 
     // Add constructor to exports
     napi_set_named_property(env, exports, name, constructor);

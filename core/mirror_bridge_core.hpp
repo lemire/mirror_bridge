@@ -158,7 +158,7 @@ consteval std::size_t get_data_member_count() {
     return std::meta::nonstatic_data_members_of(^^T, std::meta::access_context::current()).size();
 }
 
-// Member Function Cache - using members_of and filtering
+// Member Function Cache - using members_of and filtering (instance methods only)
 template<typename T>
 struct MemberFunctionCache {
     static consteval bool is_bindable_method(std::meta::info member) {
@@ -197,6 +197,45 @@ struct MemberFunctionCache {
     static constexpr std::size_t count = compute_count();
 };
 
+// Static Member Function Cache - for class-level static methods
+template<typename T>
+struct StaticMemberFunctionCache {
+    static consteval bool is_bindable_static_method(std::meta::info member) {
+        return std::meta::is_function(member) &&
+               std::meta::is_static_member(member) &&
+               !std::meta::is_constructor(member) &&
+               !std::meta::is_special_member_function(member) &&
+               !std::meta::is_operator_function(member);
+    }
+
+    static consteval std::size_t compute_count() {
+        auto all_members = std::meta::members_of(^^T, std::meta::access_context::current());
+        std::size_t count = 0;
+        for (auto member : all_members) {
+            if (is_bindable_static_method(member)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    static consteval auto get_at_index(std::size_t Index) {
+        auto all_members = std::meta::members_of(^^T, std::meta::access_context::current());
+        std::size_t func_index = 0;
+        for (auto member : all_members) {
+            if (is_bindable_static_method(member)) {
+                if (func_index == Index) {
+                    return member;
+                }
+                func_index++;
+            }
+        }
+        return all_members[0];
+    }
+
+    static constexpr std::size_t count = compute_count();
+};
+
 template<typename T, std::size_t I>
 consteval auto get_member_function() {
     return MemberFunctionCache<T>::get_at_index(I);
@@ -205,6 +244,42 @@ consteval auto get_member_function() {
 template<typename T>
 consteval std::size_t get_member_function_count() {
     return MemberFunctionCache<T>::count;
+}
+
+template<typename T, std::size_t I>
+consteval auto get_static_member_function() {
+    return StaticMemberFunctionCache<T>::get_at_index(I);
+}
+
+template<typename T>
+consteval std::size_t get_static_member_function_count() {
+    return StaticMemberFunctionCache<T>::count;
+}
+
+template<typename T, std::size_t Index>
+consteval const char* get_static_member_function_name() {
+    constexpr auto func = get_static_member_function<T, Index>();
+    return std::meta::identifier_of(func).data();
+}
+
+// Static method parameter introspection
+template<typename T, std::size_t FuncIndex>
+consteval std::size_t get_static_method_param_count() {
+    constexpr auto func = get_static_member_function<T, FuncIndex>();
+    return std::meta::parameters_of(func).size();
+}
+
+template<typename T, std::size_t FuncIndex, std::size_t ParamIndex>
+consteval auto get_static_method_param_type() {
+    constexpr auto func = get_static_member_function<T, FuncIndex>();
+    auto params = std::meta::parameters_of(func);
+    return std::meta::type_of(params[ParamIndex]);
+}
+
+template<typename T, std::size_t FuncIndex>
+consteval auto get_static_method_return_type() {
+    constexpr auto func = get_static_member_function<T, FuncIndex>();
+    return std::meta::return_type_of(func);
 }
 
 // Method parameter introspection

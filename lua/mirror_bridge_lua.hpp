@@ -194,13 +194,35 @@ bool from_lua(lua_State* L, int idx, T& out) {
     return true;
 }
 
-// Forward declaration for Bindable types
+// Forward declaration for LuaWrapper (needed for from_lua with wrapped objects)
+template<typename T> struct LuaWrapper;
+
+// Type-based registry for looking up metatable name by C++ type
 template<typename T>
-std::enable_if_t<
-    Bindable<T> && !StringLike<T> && !Container<T> && !Arithmetic<T> && !SmartPointer<T>,
-    bool
->
-from_lua(lua_State* L, int idx, T& out);
+struct LuaTypeRegistry {
+    static inline const char* metatable_name = nullptr;
+};
+
+// Convert Lua wrapped objects to C++ types
+// Handles const reference parameters like dot(const Vec3& other)
+template<typename T>
+    requires (std::is_class_v<std::remove_cvref_t<T>> &&
+              !Arithmetic<T> && !StringLike<T> && !SmartPointer<T> && !Container<T>)
+bool from_lua(lua_State* L, int idx, T& out) {
+    using CleanT = std::remove_cvref_t<T>;
+
+    // Try to get as userdata first (wrapped C++ object)
+    if (lua_isuserdata(L, idx)) {
+        LuaWrapper<CleanT>* wrapper = static_cast<LuaWrapper<CleanT>*>(lua_touserdata(L, idx));
+        if (wrapper && wrapper->cpp_object) {
+            out = *wrapper->cpp_object;
+            return true;
+        }
+    }
+
+    // Fall back to table/dict conversion
+    return LuaConversionHelper<CleanT>::from_lua_impl(L, idx, out);
+}
 
 // ============================================================================
 // Forward Declarations
@@ -365,6 +387,55 @@ int lua_method(lua_State* L) {
 }
 
 // ============================================================================
+// Static Method Binding
+// ============================================================================
+
+template<typename T, std::size_t FuncIndex, std::size_t... Is>
+int call_static_method_impl(lua_State* L, std::index_sequence<Is...>) {
+    constexpr auto member_func = get_static_member_function<T, FuncIndex>();
+    constexpr auto return_type = get_static_method_return_type<T, FuncIndex>();
+    using ReturnType = typename [:return_type:];
+
+    std::tuple<std::remove_cvref_t<typename [:get_static_method_param_type<T, FuncIndex, Is>():]>...> cpp_args;
+
+    bool success = true;
+    ([&] {
+        if (!success) return;
+        // Static methods: args start at index 1 (no self)
+        if (!from_lua(L, 1 + Is, std::get<Is>(cpp_args))) {
+            success = false;
+        }
+    }(), ...);
+
+    if (!success) {
+        return luaL_error(L, "Argument type conversion failed");
+    }
+
+    if constexpr (std::is_void_v<ReturnType>) {
+        [:member_func:](std::move(std::get<Is>(cpp_args))...);
+        return 0;
+    } else {
+        ReturnType result = [:member_func:](std::move(std::get<Is>(cpp_args))...);
+        to_lua(L, result);
+        return 1;
+    }
+}
+
+template<typename T, std::size_t Index>
+int lua_static_method(lua_State* L) {
+    constexpr std::size_t param_count = get_static_method_param_count<T, Index>();
+
+    // Check argument count
+    int nargs = lua_gettop(L);
+    if (nargs != static_cast<int>(param_count)) {
+        return luaL_error(L, "Incorrect number of arguments (expected %d, got %d)",
+                          static_cast<int>(param_count), nargs);
+    }
+
+    return call_static_method_impl<T, Index>(L, std::make_index_sequence<param_count>{});
+}
+
+// ============================================================================
 // Garbage Collection
 // ============================================================================
 
@@ -459,6 +530,26 @@ std::enable_if_t<
     Bindable<T> && !StringLike<T> && !Container<T> && !Arithmetic<T> && !SmartPointer<T>
 >
 to_lua(lua_State* L, const T& obj) {
+    using CleanT = std::remove_cvref_t<T>;
+
+    // Check if this type has been registered with bind_class
+    if (LuaTypeRegistry<CleanT>::metatable_name) {
+        // Create a new userdata wrapper
+        LuaWrapper<CleanT>* wrapper = static_cast<LuaWrapper<CleanT>*>(
+            lua_newuserdata(L, sizeof(LuaWrapper<CleanT>)));
+
+        // Copy the C++ object
+        wrapper->cpp_object = new CleanT(obj);
+        wrapper->owns_memory = true;
+
+        // Set the metatable
+        luaL_getmetatable(L, LuaTypeRegistry<CleanT>::metatable_name);
+        lua_setmetatable(L, -2);
+
+        return;
+    }
+
+    // Fall back to table conversion for unregistered types
     LuaConversionHelper<T>::to_lua_impl(L, obj);
 }
 
@@ -477,6 +568,11 @@ from_lua(lua_State* L, int idx, T& out) {
 
 template<Bindable T>
 void bind_class(lua_State* L, const char* name) {
+    constexpr std::size_t static_method_count = get_static_member_function_count<T>();
+
+    // Store metatable name in type registry (for to_lua wrapper creation)
+    LuaTypeRegistry<T>::metatable_name = typeid(T).name();
+
     // Create metatable for this class
     luaL_newmetatable(L, typeid(T).name());
 
@@ -495,8 +591,31 @@ void bind_class(lua_State* L, const char* name) {
     // Pop metatable
     lua_pop(L, 1);
 
-    // Register constructor in the module table (on top of stack)
+    // Create a table for the class (holds constructor and static methods)
+    lua_newtable(L);
+
+    // Add constructor as __call on a metatable for the class table
+    lua_newtable(L);  // metatable for class table
     lua_pushcfunction(L, lua_constructor<T>);
+    lua_setfield(L, -2, "__call");
+    lua_setmetatable(L, -2);  // set metatable on class table
+
+    // Also add constructor directly as "new" method
+    lua_pushcfunction(L, lua_constructor<T>);
+    lua_setfield(L, -2, "new");
+
+    // Add static methods to the class table
+    if constexpr (static_method_count > 0) {
+        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            ([&] {
+                constexpr auto method_name = get_static_member_function_name<T, Is>();
+                lua_pushcfunction(L, lua_static_method<T, Is>);
+                lua_setfield(L, -2, method_name);
+            }(), ...);
+        }(std::make_index_sequence<static_method_count>{});
+    }
+
+    // Set the class table in the module table
     lua_setfield(L, -2, name);
 }
 
