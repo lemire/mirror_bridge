@@ -147,6 +147,8 @@ SKIP_TESTS=(
     "test_person.py:Known segfault - inheritance binding incomplete"
     "test_student.py:Known segfault - inheritance binding incomplete"
     "test_company.py:Known segfault - nested class binding incomplete"
+    "test_robot_python.py:Single-header test - requires separate build step"
+    "test_robot_lua.py:Single-header test - requires separate build step"
 )
 
 # Function to check if test should be skipped
