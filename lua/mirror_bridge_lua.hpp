@@ -211,7 +211,7 @@ template<typename T>
 bool from_lua(lua_State* L, int idx, T& out) {
     using CleanT = std::remove_cvref_t<T>;
 
-    // Try to get as userdata first (wrapped C++ object)
+    // Get as userdata (wrapped C++ object)
     if (lua_isuserdata(L, idx)) {
         LuaWrapper<CleanT>* wrapper = static_cast<LuaWrapper<CleanT>*>(lua_touserdata(L, idx));
         if (wrapper && wrapper->cpp_object) {
@@ -220,8 +220,7 @@ bool from_lua(lua_State* L, int idx, T& out) {
         }
     }
 
-    // Fall back to table/dict conversion
-    return LuaConversionHelper<CleanT>::from_lua_impl(L, idx, out);
+    return false;
 }
 
 // ============================================================================
@@ -609,7 +608,7 @@ void bind_class(lua_State* L, const char* name) {
         [&]<std::size_t... Is>(std::index_sequence<Is...>) {
             ([&] {
                 constexpr auto method_name = get_static_member_function_name<T, Is>();
-                lua_pushcfunction(L, lua_static_method<T, Is>);
+                lua_pushcclosure(L, lua_static_method<T, Is>, 0);
                 lua_setfield(L, -2, method_name);
             }(), ...);
         }(std::make_index_sequence<static_method_count>{});
