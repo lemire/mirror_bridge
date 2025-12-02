@@ -33,8 +33,6 @@ jobs:
 
       - name: Run Python tests
         run: |
-          cd /github/workspace
-
           # Build and test Vec3 static method test
           echo "=== Building Vec3 test ==="
           cd tests/static_method_test
@@ -46,7 +44,6 @@ jobs:
 
       - name: Run full test suite
         run: |
-          cd /github/workspace
           ./tests/run_all_tests.sh
 
   test-lua:
@@ -69,7 +66,7 @@ jobs:
 
       - name: Run Lua tests
         run: |
-          cd /github/workspace/tests/lua/static_method_test
+          cd tests/lua/static_method_test
           ./build_and_test.sh
 
   test-javascript:
@@ -93,5 +90,5 @@ jobs:
 
       - name: Run JavaScript tests
         run: |
-          cd /github/workspace/tests/js/static_method_test
+          cd tests/js/static_method_test
           ./build_and_test.sh
