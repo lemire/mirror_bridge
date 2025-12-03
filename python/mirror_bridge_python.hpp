@@ -766,7 +766,9 @@ consteval auto get_static_method_return_type() {
 // Generate a type signature for a given class using reflection
 template<typename T>
 std::string generate_type_signature(const char* file_hash = nullptr) {
-    std::string sig{std::meta::identifier_of(^^T)};
+    // Use display_string_of instead of identifier_of to support template specializations
+    // identifier_of fails for types like Container<int> since they're not simple identifiers
+    std::string sig{std::meta::display_string_of(^^T)};
     sig += "{";
 
     // Data members section - use cached count
