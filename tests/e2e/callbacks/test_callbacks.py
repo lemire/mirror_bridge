@@ -2,7 +2,10 @@
 """Test std::function callback bindings"""
 
 import sys
-sys.path.insert(0, '../../../build')
+import os
+
+# Add build directory to Python path (use absolute path for CI compatibility)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'build'))
 
 import callbacks
 
