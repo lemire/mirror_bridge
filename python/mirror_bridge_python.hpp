@@ -52,6 +52,7 @@
 #include <type_traits>
 #include <concepts>
 #include <memory>
+#include <functional>
 #include <unordered_map>
 #include <cstdio>   // For snprintf in simple repr functions
 
@@ -119,6 +120,17 @@ concept SmartPointer = requires {
     typename std::remove_cvref_t<T>::element_type;
 } && (std::is_same_v<std::remove_cvref_t<T>, std::unique_ptr<typename std::remove_cvref_t<T>::element_type>> ||
       std::is_same_v<std::remove_cvref_t<T>, std::shared_ptr<typename std::remove_cvref_t<T>::element_type>>);
+
+// Helper trait to detect std::function
+template<typename T>
+struct is_std_function : std::false_type {};
+
+template<typename R, typename... Args>
+struct is_std_function<std::function<R(Args...)>> : std::true_type {};
+
+// Concept to identify std::function types (for callback support)
+template<typename T>
+concept StdFunction = is_std_function<std::remove_cvref_t<T>>::value;
 
 // Concept to identify C++ standard containers (vector, array, list, etc.)
 // Optimized: uses begin/end check instead of ranges (avoids heavy <ranges> include)
@@ -314,6 +326,151 @@ inline bool from_python(PyObject* obj, T& out) {
         out = std::make_shared<ElementType>(std::move(value));
     }
     return true;
+}
+
+// ============================================================================
+// std::function Callback Support
+// ============================================================================
+//
+// Enables passing Python callables to C++ functions that accept std::function.
+//
+// Example C++ code:
+//   void set_callback(std::function<void(int)> cb);
+//   void process(std::function<int(double, double)> compute);
+//
+// Python usage:
+//   obj.set_callback(lambda x: print(f"Got: {x}"))
+//   obj.process(lambda a, b: int(a + b))
+//
+// The wrapper stores a reference to the Python callable and handles:
+// - GIL acquisition for thread safety
+// - Argument conversion from C++ to Python
+// - Return value conversion from Python to C++
+// - Exception propagation from Python to C++
+
+// Helper struct to wrap a Python callable as a C++ callable
+// Uses shared_ptr to PyObject for proper reference counting
+template<typename R, typename... Args>
+struct PythonCallableWrapper {
+    // Shared ownership of the Python callable object
+    std::shared_ptr<PyObject> py_callable;
+
+    PythonCallableWrapper(PyObject* callable)
+        : py_callable(callable, [](PyObject* p) {
+            // Release Python reference when the wrapper is destroyed
+            // Must acquire GIL since this may be called from any thread
+            PyGILState_STATE gstate = PyGILState_Ensure();
+            Py_XDECREF(p);
+            PyGILState_Release(gstate);
+        })
+    {
+        Py_INCREF(callable);  // Take ownership
+    }
+
+    R operator()(Args... args) const {
+        // Acquire GIL - critical for thread safety
+        PyGILState_STATE gstate = PyGILState_Ensure();
+
+        // Build argument tuple
+        PyObject* py_args = PyTuple_New(sizeof...(Args));
+        if (!py_args) {
+            PyGILState_Release(gstate);
+            throw std::runtime_error("Failed to create argument tuple");
+        }
+
+        // Convert each C++ argument to Python
+        std::size_t idx = 0;
+        bool conversion_ok = true;
+        (([&] {
+            if (!conversion_ok) return;
+            PyObject* py_arg = to_python(args);
+            if (!py_arg) {
+                conversion_ok = false;
+            } else {
+                PyTuple_SET_ITEM(py_args, idx, py_arg);  // Steals reference
+            }
+            idx++;
+        })(), ...);
+
+        if (!conversion_ok) {
+            Py_DECREF(py_args);
+            PyGILState_Release(gstate);
+            throw std::runtime_error("Failed to convert callback arguments to Python");
+        }
+
+        // Call the Python callable
+        PyObject* result = PyObject_Call(py_callable.get(), py_args, nullptr);
+        Py_DECREF(py_args);
+
+        if (!result) {
+            // Python exception occurred - convert to C++ exception
+            PyObject *type, *value, *traceback;
+            PyErr_Fetch(&type, &value, &traceback);
+
+            std::string error_msg = "Python callback raised an exception";
+            if (value) {
+                PyObject* str_obj = PyObject_Str(value);
+                if (str_obj) {
+                    const char* str = PyUnicode_AsUTF8(str_obj);
+                    if (str) error_msg = str;
+                    Py_DECREF(str_obj);
+                }
+            }
+
+            Py_XDECREF(type);
+            Py_XDECREF(value);
+            Py_XDECREF(traceback);
+            PyGILState_Release(gstate);
+            throw std::runtime_error(error_msg);
+        }
+
+        // Handle return value
+        if constexpr (std::is_void_v<R>) {
+            Py_DECREF(result);
+            PyGILState_Release(gstate);
+        } else {
+            R cpp_result;
+            bool ok = from_python(result, cpp_result);
+            Py_DECREF(result);
+            PyGILState_Release(gstate);
+
+            if (!ok) {
+                throw std::runtime_error("Failed to convert Python callback return value to C++");
+            }
+            return cpp_result;
+        }
+    }
+};
+
+// Convert Python callable to std::function
+// This is the key function for callback support
+template<typename R, typename... Args>
+inline bool from_python(PyObject* obj, std::function<R(Args...)>& out) {
+    if (!obj || obj == Py_None) {
+        out = nullptr;
+        return true;
+    }
+
+    if (!PyCallable_Check(obj)) {
+        PyErr_SetString(PyExc_TypeError, "Expected a callable object");
+        return false;
+    }
+
+    // Wrap the Python callable in a C++ functor
+    out = PythonCallableWrapper<R, Args...>(obj);
+    return true;
+}
+
+// Convert std::function to Python (less common, but useful for completeness)
+// Returns None if the function is empty, otherwise returns a description
+template<typename R, typename... Args>
+inline PyObject* to_python(const std::function<R(Args...)>& func) {
+    if (!func) {
+        Py_RETURN_NONE;
+    }
+    // We can't easily convert an arbitrary std::function back to a Python callable
+    // Return a string description instead
+    return PyUnicode_FromString("<C++ std::function>");
 }
 
 // Optimized: Convert vector<unsigned char> to Python bytes (not list!)
