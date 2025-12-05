@@ -2,7 +2,11 @@
 """Test template class bindings"""
 
 import sys
-sys.path.insert(0, '../../../build')
+import os
+
+# Add build directory to Python path (use absolute path for CI compatibility)
+# Build output is at repo_root/build, which is 3 levels up from tests/e2e/templates
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'build'))
 
 import container
 
