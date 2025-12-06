@@ -20,8 +20,9 @@ BINDING_SCRIPT="$PROJECT_ROOT/build_bindings.sh"
 # Set up environment for libc++ (needed for reflection support)
 export LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:/usr/local/lib/x86_64-unknown-linux-gnu:$LD_LIBRARY_PATH
 
-# Set up Lua module path to find built .so files (with _lua suffix)
-export LUA_CPATH="$BUILD_DIR/?_lua.so;;"
+# Set up Lua module path to find built .so files
+# Support both direct names (robot_lua.so) and suffixed names (point2d_lua.so)
+export LUA_CPATH="$BUILD_DIR/?.so;$BUILD_DIR/?_lua.so;;"
 
 # Counters
 TOTAL_BINDINGS=0
