@@ -127,12 +127,18 @@ while IFS= read -r -d '' binding_file; do
 
     # Compile the binding - capture output
     # Add both project root and binding dir to include paths
+    # Use || true to prevent set -e from exiting on compile failure
     compile_output=$(cd "$binding_dir" && $CXX_COMPILER $CXX_FLAGS \
         -I"$PROJECT_ROOT" -I. -fPIC -shared \
         $includes \
-        "$(basename "$binding_file")" -o "$BUILD_DIR/${output_name}${output_ext}" 2>&1)
+        "$(basename "$binding_file")" -o "$BUILD_DIR/${output_name}${output_ext}" 2>&1) || true
 
-    compile_exit=$?
+    # Check if output file was created (more reliable than exit code with || true)
+    if [ -f "$BUILD_DIR/${output_name}${output_ext}" ]; then
+        compile_exit=0
+    else
+        compile_exit=1
+    fi
 
     # Filter out the designated initializer warning
     filtered_output=$(echo "$compile_output" | grep -v "mixture of designated" || true)
