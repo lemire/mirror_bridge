@@ -11,8 +11,11 @@ env:
   IMAGE_NAME: franciscothiesen/mirror_bridge
 
 jobs:
+  # ============================================================================
+  # Clang-based tests (Bloomberg's clang-p2996 fork)
+  # ============================================================================
   test-python:
-    name: Python Bindings
+    name: Python Bindings (Clang)
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/franciscothiesen/mirror_bridge:latest
@@ -47,7 +50,7 @@ jobs:
           ./tests/run_all_tests.sh
 
   test-lua:
-    name: Lua Bindings
+    name: Lua Bindings (Clang)
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/franciscothiesen/mirror_bridge:latest
@@ -70,7 +73,7 @@ jobs:
           ./build_and_test.sh
 
   test-javascript:
-    name: JavaScript Bindings
+    name: JavaScript Bindings (Clang)
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/franciscothiesen/mirror_bridge:latest
@@ -92,3 +95,43 @@ jobs:
         run: |
           cd tests/js/static_method_test
           ./build_and_test.sh
+
+  # ============================================================================
+  # GCC-based tests (Marek Polacek's GCC reflection branch)
+  # This tests compatibility with GCC's P2996 implementation
+  # ============================================================================
+  test-gcc-python:
+    name: Python Bindings (GCC)
+    runs-on: ubuntu-latest
+    # Allow this job to fail since GCC reflection is experimental
+    continue-on-error: true
+    container:
+      image: ghcr.io/franciscothiesen/mirror_bridge-gcc:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify GCC reflection support
+        run: |
+          echo "GCC version:"
+          g++ --version
+          echo ""
+          echo '#include <meta>' > /tmp/test.cpp
+          echo 'int main() { return 0; }' >> /tmp/test.cpp
+          g++ -std=c++26 -freflection /tmp/test.cpp -o /tmp/test
+          echo "✓ GCC reflection support verified"
+
+      - name: Run full test suite with GCC
+        env:
+          # Override compiler for the test suite
+          CXX: g++
+          CC: gcc
+        run: |
+          # Modify the test runner to use GCC flags instead of Clang flags
+          # GCC uses -std=c++26 -freflection (no -stdlib=libc++ needed)
+          sed -i 's/-std=c++2c -freflection -freflection-latest -stdlib=libc++/-std=c++26 -freflection/g' tests/run_all_tests.sh
+          ./tests/run_all_tests.sh
