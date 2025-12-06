@@ -38,10 +38,18 @@ echo -e "${BLUE}  Mirror Bridge - Automated Test Suite${NC}"
 echo -e "${BLUE}=======================================${NC}"
 echo ""
 
-# Check if running inside Docker container with reflection compiler
-if ! command -v clang++ &> /dev/null; then
-    echo -e "${RED}Error: clang++ not found${NC}"
-    echo "This script must run inside the mirror_bridge Docker container."
+# Detect which reflection-enabled compiler is available
+if command -v clang++ &> /dev/null; then
+    CXX_COMPILER="clang++"
+    CXX_FLAGS="-std=c++2c -freflection -freflection-latest -stdlib=libc++"
+    echo -e "${BLUE}Using Clang compiler${NC}"
+elif command -v g++ &> /dev/null; then
+    CXX_COMPILER="g++"
+    CXX_FLAGS="-std=c++26 -freflection"
+    echo -e "${BLUE}Using GCC compiler${NC}"
+else
+    echo -e "${RED}Error: No C++ compiler found (clang++ or g++)${NC}"
+    echo "This script must run inside a mirror_bridge Docker container."
     echo ""
     echo "To run tests:"
     echo "  ./start_dev_container.sh"
@@ -50,20 +58,17 @@ if ! command -v clang++ &> /dev/null; then
     exit 1
 fi
 
-# Check if compiler supports reflection
-if ! clang++ --version 2>&1 | grep -q "reflection\|p2996\|bloomberg"; then
-    echo -e "${YELLOW}Warning: Compiler may not support C++26 reflection${NC}"
-    echo "This script requires the reflection-enabled clang compiler."
-    echo ""
-    echo "To run tests inside the Docker container:"
-    echo "  ./start_dev_container.sh"
-    echo "  cd /workspace"
-    echo "  ./tests/run_all_tests.sh"
-    echo ""
-    read -p "Continue anyway? [y/N] " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+# Check if compiler supports reflection (Clang-specific check)
+if [[ "$CXX_COMPILER" == "clang++" ]]; then
+    if ! clang++ --version 2>&1 | grep -q "reflection\|p2996\|bloomberg"; then
+        echo -e "${YELLOW}Warning: Compiler may not support C++26 reflection${NC}"
+        echo "This script requires a reflection-enabled compiler."
+        echo ""
+        read -p "Continue anyway? [y/N] " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
     fi
 fi
 
@@ -122,7 +127,7 @@ while IFS= read -r -d '' binding_file; do
 
     # Compile the binding - capture output
     # Add both project root and binding dir to include paths
-    compile_output=$(cd "$binding_dir" && clang++ -std=c++2c -freflection -freflection-latest -stdlib=libc++ \
+    compile_output=$(cd "$binding_dir" && $CXX_COMPILER $CXX_FLAGS \
         -I"$PROJECT_ROOT" -I. -fPIC -shared \
         $includes \
         "$(basename "$binding_file")" -o "$BUILD_DIR/${output_name}${output_ext}" 2>&1)

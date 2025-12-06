@@ -126,12 +126,6 @@ jobs:
           echo "✓ GCC reflection support verified"
 
       - name: Run full test suite with GCC
-        env:
-          # Override compiler for the test suite
-          CXX: g++
-          CC: gcc
         run: |
-          # Modify the test runner to use GCC flags instead of Clang flags
-          # GCC uses -std=c++26 -freflection (no -stdlib=libc++ needed)
-          sed -i 's/-std=c++2c -freflection -freflection-latest -stdlib=libc++/-std=c++26 -freflection/g' tests/run_all_tests.sh
+          # The test script auto-detects GCC vs Clang and uses appropriate flags
           ./tests/run_all_tests.sh
