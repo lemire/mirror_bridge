@@ -1,5 +1,6 @@
 // Test single-header JavaScript binding
-const robot = require('./robot_js');
+const path = require('path');
+const robot = require(path.join(__dirname, '..', '..', 'build', 'robot_js'));
 const assert = require('assert');
 
 console.log('=== JavaScript Single-Header Test ===\n');

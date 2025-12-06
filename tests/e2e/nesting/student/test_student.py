@@ -7,7 +7,7 @@ Each class is in a separate .hpp file
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', 'build'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'build'))
 
 try:
     import student
@@ -25,43 +25,52 @@ def main():
     print(f"  name: '{s.name}'")
     print(f"  student_id: {s.student_id}")
     print(f"  school (University from university.hpp): {s.school}")
-    assert isinstance(s.school, dict)
-    assert 'location' in s.school  # Address from address.hpp
-    assert isinstance(s.school['location'], dict)
+    # University and Address are now bound classes
+    assert hasattr(s.school, 'name'), "University should have name attribute"
+    assert hasattr(s.school, 'location'), "University should have location attribute"
+    assert hasattr(s.school.location, 'city'), "Address should have city attribute"
     print("  ✓ Cross-file dependency chain works: Student -> University -> Address")
     print()
 
     # Test 2: Set values across file boundaries
+    # Note: Nested object properties must be modified on the object first,
+    # then assigned to parent (getter returns a copy)
     print("Test 2: Setting nested values from different files...")
     s.name = "Alice"
     s.student_id = 54321
-    s.school = {
-        'name': 'MIT',
-        'student_count': 11000,
-        'location': {  # Address from address.hpp
-            'street': '77 Massachusetts Ave',
-            'city': 'Cambridge',
-            'country': 'USA',
-            'zip_code': 2139
-        }
-    }
+
+    # Build the nested objects from innermost out
+    addr = student.Address()
+    addr.street = '77 Massachusetts Ave'
+    addr.city = 'Cambridge'
+    addr.country = 'USA'
+    addr.zip_code = 2139
+
+    uni = student.University()
+    uni.name = 'MIT'
+    uni.student_count = 11000
+    uni.location = addr
+
+    s.school = uni
 
     print(f"  Student: {s.name} (ID: {s.student_id})")
-    print(f"  School: {s.school['name']}")
-    print(f"  Location: {s.school['location']['city']}, {s.school['location']['country']}")
+    print(f"  School: {s.school.name}")
+    print(f"  Location: {s.school.location.city}, {s.school.location.country}")
 
     assert s.name == "Alice"
-    assert s.school['name'] == "MIT"
-    assert s.school['location']['city'] == "Cambridge"
+    assert s.school.name == "MIT"
+    assert s.school.location.city == "Cambridge"
     print("  ✓ All cross-file nested values work correctly")
     print()
 
-    # Test 3: Verify no compilation order needed
-    print("Test 3: Verify no DAG ordering problem...")
-    print("  ℹ We only compiled student_binding.cpp")
-    print("  ℹ University and Address were NOT separately compiled")
-    print("  ℹ They are automatically handled as nested types")
-    print("  ✓ No dependency ordering required!")
+    # Test 3: Verify all classes are accessible
+    print("Test 3: Verify all classes are bound...")
+    addr2 = student.Address()
+    addr2.city = "Boston"
+    uni2 = student.University()
+    uni2.name = "Harvard"
+    print(f"  ✓ Address class accessible: city={addr2.city}")
+    print(f"  ✓ University class accessible: name={uni2.name}")
     print()
 
     print("="*40)

@@ -7,8 +7,8 @@ Tests binding of classes that contain other bindable classes.
 import sys
 import os
 
-# Add build directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'build'))
+# Add build directory to path (4 levels up from tests/e2e/nesting/person)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'build'))
 
 try:
     import person
@@ -30,7 +30,8 @@ def test_person_nested():
     print(f"  address: {p.address}")
     assert p.name == "", "Default name should be empty"
     assert p.age == 0, "Default age should be 0"
-    assert isinstance(p.address, dict), "Nested address should be a dict"
+    # Address is now a bound class, not a dict
+    assert hasattr(p.address, 'street'), "Address should have street attribute"
     print()
 
     # Test 2: Modify simple fields
@@ -44,30 +45,31 @@ def test_person_nested():
     print(f"  ✓ Simple fields work correctly")
     print()
 
-    # Test 3: Modify nested Address class
-    print("Test 3: Modifying nested Address...")
-    p.address = {
-        "street": "123 Main St",
-        "city": "Springfield",
-        "zip_code": 12345
-    }
-    print(f"  Set address: {p.address}")
-    assert p.address["street"] == "123 Main St", "Street should be updated"
-    assert p.address["city"] == "Springfield", "City should be updated"
-    assert p.address["zip_code"] == 12345, "Zip code should be updated"
+    # Test 3: Create and assign new Address object
+    # Note: Nested object properties must be modified on the Address object first,
+    # then assigned to Person (getter returns a copy)
+    print("Test 3: Assigning new Address object...")
+    new_addr = person.Address()
+    new_addr.street = "123 Main St"
+    new_addr.city = "Springfield"
+    new_addr.zip_code = 12345
+    p.address = new_addr
+    print(f"  Set address: street='{p.address.street}', city='{p.address.city}', zip={p.address.zip_code}")
+    assert p.address.street == "123 Main St", "Street should be updated"
+    assert p.address.city == "Springfield", "City should be updated"
+    assert p.address.zip_code == 12345, "Zip code should be updated"
     print(f"  ✓ Nested class works correctly")
     print()
 
-    # Test 4: Partial address update
-    print("Test 4: Partial address update...")
-    new_address = {
-        "street": "456 Oak Ave",
-        "city": "Portland",
-        "zip_code": 97201
-    }
-    p.address = new_address
-    print(f"  Updated address: {p.address}")
-    assert p.address["street"] == "456 Oak Ave", "Street should be updated"
+    # Test 4: Replace address with another
+    print("Test 4: Replacing address...")
+    another_addr = person.Address()
+    another_addr.street = "456 Oak Ave"
+    another_addr.city = "Portland"
+    another_addr.zip_code = 97201
+    p.address = another_addr
+    print(f"  Updated address: street='{p.address.street}', city='{p.address.city}'")
+    assert p.address.street == "456 Oak Ave", "Street should be updated"
     print(f"  ✓ Address can be completely replaced")
     print()
 
@@ -76,12 +78,16 @@ def test_person_nested():
     p1 = person.Person()
     p2 = person.Person()
     p1.name = "Bob"
-    p1.address = {"street": "1st St", "city": "NYC", "zip_code": 10001}
+    addr1 = person.Address()
+    addr1.city = "NYC"
+    p1.address = addr1
     p2.name = "Charlie"
-    p2.address = {"street": "2nd St", "city": "LA", "zip_code": 90001}
-    print(f"  p1: {p1.name} at {p1.address['city']}")
-    print(f"  p2: {p2.name} at {p2.address['city']}")
-    assert p1.address["city"] != p2.address["city"], "Instances should be independent"
+    addr2 = person.Address()
+    addr2.city = "LA"
+    p2.address = addr2
+    print(f"  p1: {p1.name} at {p1.address.city}")
+    print(f"  p2: {p2.name} at {p2.address.city}")
+    assert p1.address.city != p2.address.city, "Instances should be independent"
     print(f"  ✓ Multiple instances work independently")
     print()
 

@@ -80,8 +80,9 @@ while IFS= read -r -d '' binding_file; do
 
     TOTAL_BINDINGS=$((TOTAL_BINDINGS + 1))
 
-    # Extract module name from file (remove _binding.cpp)
+    # Extract module name from file (remove _binding.cpp or just .cpp)
     module_name=$(basename "$binding_file" _binding.cpp)
+    module_name=$(basename "$module_name" .cpp)
 
     # Get the directory of the binding file for proper includes
     binding_dir=$(dirname "$binding_file")
@@ -89,13 +90,23 @@ while IFS= read -r -d '' binding_file; do
     # Determine binding type and set appropriate flags
     if [[ "$binding_file" == */js/* ]] || [[ "$binding_file" == *_js.cpp ]]; then
         # JavaScript binding
-        output_name="${module_name}_js"
+        # Only add _js suffix if not already present
+        if [[ "$module_name" == *_js ]]; then
+            output_name="${module_name}"
+        else
+            output_name="${module_name}_js"
+        fi
         output_ext=".node"
         includes="-I/usr/include/node"
         echo -e "${BLUE}Building ${module_name} (JavaScript)...${NC}"
     elif [[ "$binding_file" == */lua/* ]] || [[ "$binding_file" == *_lua.cpp ]]; then
         # Lua binding - use _lua suffix to avoid collision with Python bindings
-        output_name="${module_name}_lua"
+        # Only add _lua suffix if not already present
+        if [[ "$module_name" == *_lua ]]; then
+            output_name="${module_name}"
+        else
+            output_name="${module_name}_lua"
+        fi
         output_ext=".so"
         includes="-I/usr/include/lua5.4 -llua5.4"
         echo -e "${BLUE}Building ${module_name} (Lua)...${NC}"
@@ -142,22 +153,17 @@ echo ""
 export PYTHONPATH="$BUILD_DIR:$PYTHONPATH"
 
 # Tests to skip (with reasons)
-# Format: "test_name.py:reason"
+# Format: "path_pattern:reason" - pattern matches against the full path
 SKIP_TESTS=(
-    "test_person.py:Known segfault - inheritance binding incomplete"
-    "test_student.py:Known segfault - inheritance binding incomplete"
-    "test_company.py:Known segfault - nested class binding incomplete"
-    "test_robot_python.py:Single-header test - requires separate build step"
-    "test_robot_lua.py:Single-header test - requires separate build step"
-    "test_resource.py:Smart pointer return type conversion - needs investigation"
+    # All tests should now pass!
 )
 
-# Function to check if test should be skipped
+# Function to check if test should be skipped (uses path pattern matching)
 should_skip_test() {
-    local test_name=$1
+    local test_path=$1
     for skip_entry in "${SKIP_TESTS[@]}"; do
-        local skip_test=$(echo "$skip_entry" | cut -d: -f1)
-        if [ "$test_name" = "$skip_test" ]; then
+        local skip_pattern=$(echo "$skip_entry" | cut -d: -f1)
+        if [[ "$test_path" == *"$skip_pattern"* ]]; then
             return 0  # Should skip
         fi
     done
@@ -166,11 +172,11 @@ should_skip_test() {
 
 # Function to get skip reason
 get_skip_reason() {
-    local test_name=$1
+    local test_path=$1
     for skip_entry in "${SKIP_TESTS[@]}"; do
-        local skip_test=$(echo "$skip_entry" | cut -d: -f1)
+        local skip_pattern=$(echo "$skip_entry" | cut -d: -f1)
         local skip_reason=$(echo "$skip_entry" | cut -d: -f2-)
-        if [ "$test_name" = "$skip_test" ]; then
+        if [[ "$test_path" == *"$skip_pattern"* ]]; then
             echo "$skip_reason"
             return
         fi
@@ -185,10 +191,10 @@ while IFS= read -r -d '' test_file; do
 
     test_name=$(basename "$test_file")
 
-    # Check if test should be skipped
-    if should_skip_test "$test_name"; then
+    # Check if test should be skipped (pass full path for pattern matching)
+    if should_skip_test "$test_file"; then
         echo -e "${YELLOW}Skipping ${test_name}...${NC}"
-        echo -e "${YELLOW}  Reason: $(get_skip_reason "$test_name")${NC}"
+        echo -e "${YELLOW}  Reason: $(get_skip_reason "$test_file")${NC}"
         echo ""
         continue
     fi
@@ -237,7 +243,7 @@ while IFS= read -r -d '' test_file; do
         cat /tmp/test_output.txt | sed 's/^/  /'
     fi
     echo ""
-done < <(find "$TEST_DIR/js" -name "test_*.js" -type f -print0 2>/dev/null)
+done < <(find "$TEST_DIR/js" "$TEST_DIR/single_header_test" -name "test_*.js" -type f -print0 2>/dev/null)
 
 # Step 2c: Run Lua tests
 echo -e "${YELLOW}[STEP 2c/4] Running Lua tests...${NC}"
@@ -261,7 +267,7 @@ while IFS= read -r -d '' test_file; do
         cat /tmp/test_output.txt | sed 's/^/  /'
     fi
     echo ""
-done < <(find "$TEST_DIR/lua" -name "test_*.lua" -type f -print0 2>/dev/null)
+done < <(find "$TEST_DIR/lua" "$TEST_DIR/single_header_test" -name "test_*.lua" -type f -print0 2>/dev/null)
 
 # Step 3: Run shell-based tests (auto-discovery, config-file)
 echo -e "${YELLOW}[STEP 3/4] Running CLI tool tests...${NC}"
