@@ -21,8 +21,9 @@ BINDING_SCRIPT="$PROJECT_ROOT/build_bindings.sh"
 export LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:/usr/local/lib/x86_64-unknown-linux-gnu:$LD_LIBRARY_PATH
 
 # Set up Lua module path to find built .so files
-# Support both direct names (robot_lua.so) and suffixed names (point2d_lua.so)
-export LUA_CPATH="$BUILD_DIR/?.so;$BUILD_DIR/?_lua.so;;"
+# Check _lua suffix first (point2d_lua.so), then direct names (robot_lua.so)
+# Order matters: _lua suffix first avoids loading Python .so files by mistake
+export LUA_CPATH="$BUILD_DIR/?_lua.so;$BUILD_DIR/?.so;;"
 
 # Counters
 TOTAL_BINDINGS=0
