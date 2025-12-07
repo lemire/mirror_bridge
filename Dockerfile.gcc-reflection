@@ -78,6 +78,13 @@ RUN gcc --version && g++ --version
 
 # Test that reflection compiles
 # Note: GCC uses -std=c++26 -freflection (similar to clang-p2996)
+#
+# KNOWN LIMITATION: GCC's P2996 implementation currently handles pack expansion
+# with reflection splicers differently than Clang. Patterns like:
+#   std::remove_cvref_t<typename [:get_param_type<T, Is>():]>...
+# fail because GCC doesn't recognize pack parameters inside splicers.
+# Mirror Bridge tests will fail until GCC's implementation matures.
+# This container is provided for testing and tracking GCC compatibility.
 RUN echo '#include <meta>' > /tmp/test.cpp && \
     echo 'int main() { return 0; }' >> /tmp/test.cpp && \
     g++ -std=c++26 -freflection /tmp/test.cpp -o /tmp/test && \
