@@ -73,7 +73,7 @@ jobs:
           ./build_and_test.sh
 
   test-javascript:
-    name: JavaScript Bindings (Clang)
+    name: JavaScript Bindings - Node.js (Clang)
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/franciscothiesen/mirror_bridge:latest
@@ -95,6 +95,73 @@ jobs:
         run: |
           cd tests/js/static_method_test
           ./build_and_test.sh
+
+  # ============================================================================
+  # V8 Direct API Tests (Embedded V8, separate from Node.js)
+  # ============================================================================
+  test-v8:
+    name: JavaScript Bindings - V8 Direct (Clang)
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/franciscothiesen/mirror_bridge:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify V8 development files
+        run: |
+          if [ -f "/usr/include/v8.h" ] || pkg-config --exists v8 2>/dev/null; then
+            echo "✓ V8 development files available"
+          else
+            echo "✗ V8 development files not found"
+            exit 1
+          fi
+
+      - name: Build and run V8 tests
+        run: |
+          # V8 tests are built and run by the test runner
+          # They compile C++ executables that embed V8 and run JS tests
+          mkdir -p build
+
+          # Set up environment
+          export LD_LIBRARY_PATH=/usr/local/lib/aarch64-unknown-linux-gnu:/usr/local/lib/x86_64-unknown-linux-gnu:$LD_LIBRARY_PATH
+
+          # Find V8 compile flags
+          if pkg-config --exists v8 2>/dev/null; then
+            V8_CFLAGS=$(pkg-config --cflags v8)
+            V8_LIBS=$(pkg-config --libs v8)
+          else
+            V8_CFLAGS="-I/usr/include"
+            V8_LIBS="-lv8 -lv8_libplatform"
+          fi
+
+          CXX_FLAGS="-std=c++2c -freflection -freflection-latest -stdlib=libc++"
+
+          # Build and run each V8 test
+          for test_dir in tests/v8/*/; do
+            [ -d "$test_dir" ] || continue
+
+            # Handle nested directories (e.g., tests/v8/basic/point2d/)
+            for sub_dir in "$test_dir" "$test_dir"/*/; do
+              [ -f "$sub_dir/main.cpp" ] || continue
+
+              test_name=$(basename "$sub_dir")
+              echo "=== Building V8 test: $test_name ==="
+
+              cd "$sub_dir"
+              clang++ $CXX_FLAGS -I../../../.. -I. $V8_CFLAGS main.cpp -o test_executable $V8_LIBS
+
+              echo "=== Running V8 test: $test_name ==="
+              ./test_executable test.js
+
+              cd - > /dev/null
+              echo ""
+            done
+          done
 
   # ============================================================================
   # GCC-based tests (Marek Polacek's GCC reflection branch)

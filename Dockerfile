@@ -3,7 +3,7 @@ FROM ubuntu:22.04
 # Prevent interactive prompts during build
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install essential build tools, Python, Node.js, and Lua development files
+# Install essential build tools, Python, Node.js, Lua, and V8 development files
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     npm \
     lua5.4 \
     liblua5.4-dev \
+    libv8-dev \
     wget \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*

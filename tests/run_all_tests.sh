@@ -76,7 +76,7 @@ fi
 mkdir -p "$BUILD_DIR"
 
 # Step 1: Build all bindings
-echo -e "${YELLOW}[STEP 1/3] Building all bindings...${NC}"
+echo -e "${YELLOW}[STEP 1/5] Building all bindings...${NC}"
 echo ""
 
 cd "$TEST_DIR"
@@ -159,7 +159,7 @@ while IFS= read -r -d '' binding_file; do
 done < <(find . -name "*.cpp" -type f -print0)
 
 # Step 2: Run all Python tests
-echo -e "${YELLOW}[STEP 2/3] Running Python tests...${NC}"
+echo -e "${YELLOW}[STEP 2/5] Running Python tests...${NC}"
 echo ""
 
 # Set PYTHONPATH to include build directory
@@ -234,8 +234,8 @@ while IFS= read -r -d '' test_file; do
     echo ""
 done < <(find "$TEST_DIR" -name "test_*.py" -type f -print0)
 
-# Step 2b: Run JavaScript tests
-echo -e "${YELLOW}[STEP 2b/4] Running JavaScript tests...${NC}"
+# Step 2b: Run JavaScript tests (Node.js)
+echo -e "${YELLOW}[STEP 2b/5] Running JavaScript tests (Node.js)...${NC}"
 echo ""
 
 while IFS= read -r -d '' test_file; do
@@ -259,7 +259,7 @@ while IFS= read -r -d '' test_file; do
 done < <(find "$TEST_DIR/js" "$TEST_DIR/single_header_test" -name "test_*.js" -type f -print0 2>/dev/null)
 
 # Step 2c: Run Lua tests
-echo -e "${YELLOW}[STEP 2c/4] Running Lua tests...${NC}"
+echo -e "${YELLOW}[STEP 2c/5] Running Lua tests...${NC}"
 echo ""
 
 while IFS= read -r -d '' test_file; do
@@ -282,8 +282,75 @@ while IFS= read -r -d '' test_file; do
     echo ""
 done < <(find "$TEST_DIR/lua" "$TEST_DIR/single_header_test" -name "test_*.lua" -type f -print0 2>/dev/null)
 
+# Step 2d: Build and run V8 tests (if libv8-dev is installed)
+echo -e "${YELLOW}[STEP 2d/5] Running V8 tests (embedded V8)...${NC}"
+echo ""
+
+# Check if V8 development files are available
+if [ -f "/usr/include/v8.h" ] || [ -f "/usr/include/libv8/v8.h" ] || pkg-config --exists v8 2>/dev/null; then
+    # Find V8 compile flags
+    if pkg-config --exists v8 2>/dev/null; then
+        V8_CFLAGS=$(pkg-config --cflags v8)
+        V8_LIBS=$(pkg-config --libs v8)
+    else
+        # Fallback for Ubuntu's libv8-dev
+        V8_CFLAGS="-I/usr/include"
+        V8_LIBS="-lv8 -lv8_libplatform"
+    fi
+
+    # Find all V8 test main.cpp files
+    while IFS= read -r -d '' main_file; do
+        [ -f "$main_file" ] || continue
+
+        test_dir=$(dirname "$main_file")
+        test_name=$(basename "$test_dir")
+
+        # Check if test.js exists in the same directory
+        if [ ! -f "$test_dir/test.js" ]; then
+            echo -e "${YELLOW}Skipping $test_name (no test.js)${NC}"
+            continue
+        fi
+
+        TOTAL_TESTS=$((TOTAL_TESTS + 1))
+
+        echo -e "${BLUE}Building V8 test: ${test_name}...${NC}"
+
+        # Compile the V8 test executable
+        executable="$BUILD_DIR/v8_test_${test_name}"
+        compile_output=$(cd "$test_dir" && $CXX_COMPILER $CXX_FLAGS \
+            -I"$PROJECT_ROOT" -I. \
+            $V8_CFLAGS \
+            main.cpp \
+            -o "$executable" \
+            $V8_LIBS 2>&1) || true
+
+        if [ -f "$executable" ]; then
+            echo -e "${BLUE}Running V8 test: ${test_name}...${NC}"
+
+            # Run the test from the test directory so test.js is found
+            if (cd "$test_dir" && "$executable" test.js) > /tmp/test_output.txt 2>&1; then
+                echo -e "${GREEN}✓ Passed: ${test_name} (V8)${NC}"
+                PASSED_TESTS=$((PASSED_TESTS + 1))
+            else
+                echo -e "${RED}✗ Failed: ${test_name} (V8)${NC}"
+                FAILED_TESTS=$((FAILED_TESTS + 1))
+                cat /tmp/test_output.txt | sed 's/^/  /'
+            fi
+        else
+            echo -e "${RED}✗ Failed to build: ${test_name} (V8)${NC}"
+            FAILED_TESTS=$((FAILED_TESTS + 1))
+            echo "$compile_output" | sed 's/^/  /'
+        fi
+        echo ""
+    done < <(find "$TEST_DIR/v8" -name "main.cpp" -type f -print0 2>/dev/null)
+else
+    echo -e "${YELLOW}Skipping V8 tests (libv8-dev not installed)${NC}"
+    echo -e "${YELLOW}To enable V8 tests, install: apt-get install libv8-dev${NC}"
+    echo ""
+fi
+
 # Step 3: Run shell-based tests (auto-discovery, config-file)
-echo -e "${YELLOW}[STEP 3/4] Running CLI tool tests...${NC}"
+echo -e "${YELLOW}[STEP 3/5] Running CLI tool tests...${NC}"
 echo ""
 
 # Find all test_*.sh files
