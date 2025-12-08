@@ -55,6 +55,8 @@
 #include <functional>
 #include <unordered_map>
 #include <cstdio>   // For snprintf in simple repr functions
+#include <version>
+
 
 // ============================================================================
 // Feature Detection - Check for P2996 Reflection Support

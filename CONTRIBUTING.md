@@ -218,7 +218,7 @@ This library showcases modern C++26:
 **Reflection:**
 ```cpp
 // Use reflection for compile-time introspection
-constexpr auto members = std::meta::members_of(^^T);
+constexpr auto members = std::meta::members_of(^^T, std::meta::access_context::unchecked());
 constexpr auto name = std::meta::identifier_of(member);
 
 // Use splicers to inject reflected code

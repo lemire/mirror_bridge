@@ -46,6 +46,7 @@
 #include <concepts>
 #include <memory>
 #include <unordered_map>
+#include <version>
 
 // ============================================================================
 // Feature Detection - Check for P2996 Reflection Support
@@ -271,7 +272,7 @@ using NestedMemberType = typename [:std::meta::type_of(get_nested_member<T, I>()
 
 template<typename T>
 consteval std::size_t get_constructor_count() {
-    constexpr auto ctors = std::meta::members_of(^^T);
+    constexpr auto ctors = std::meta::members_of(^^T, std::meta::access_context::unchecked());
     std::size_t count = 0;
 
     for (auto ctor : ctors) {
@@ -402,6 +403,7 @@ std::string generate_type_signature(const char* file_hash = nullptr) {
 #include <memory>
 #include <unordered_map>
 #include <cstdio>   // For snprintf in simple repr functions
+#include <version>
 
 // ============================================================================
 // Feature Detection - Check for P2996 Reflection Support
