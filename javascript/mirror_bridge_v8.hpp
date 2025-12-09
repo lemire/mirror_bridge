@@ -56,28 +56,6 @@ namespace v8_bindings {  // Named v8_bindings to avoid conflict with ::v8 namesp
 // Import core concepts for convenience
 using namespace core;
 
-// Constants for V8 object wrapping
-const int kInternalFieldCount = 1;
-const int kWrapperFieldIndex = 0;
-
-// ============================================================================
-// V8 Conversion Helper for Custom Types
-// ============================================================================
-
-template<typename T>
-struct V8ConversionHelper {
-    static ::v8::Local<::v8::Value> to_v8_impl(::v8::Isolate* isolate, const T& obj) {
-        // Default implementation for custom types: return undefined
-        // Override this for specific types if needed
-        return ::v8::Undefined(isolate);
-    }
-
-    static bool from_v8_impl(::v8::Isolate* isolate, ::v8::Local<::v8::Value> value, T& out) {
-        // Default implementation: cannot convert from V8
-        return false;
-    }
-};
-
 // ============================================================================
 // V8 Wrapper for C++ Objects
 // ============================================================================
@@ -813,10 +791,9 @@ template<Bindable T>
                 v8_getter<T, Is>,          // v8::AccessorNameGetterCallback
                 v8_setter<T, Is>,          // v8::AccessorNameSetterCallback
                 v8::Local<v8::Value>(),    // Data: Optional value to pass to accessors
-                v8::SideEffectType::kHasSideEffect,  // Getter side effect type
-                v8::SideEffectType::kHasSideEffect,  // Setter side effect type
                 v8::PropertyAttribute::None,         // Property flags (e.g., ReadOnly, DontEnum)
-                v8::AccessControl::DEFAULT           // Access control settings
+                v8::SideEffectType::kHasSideEffect,  // Getter side effect type
+                v8::SideEffectType::kHasSideEffect   // Setter side effect type
             );
         }(), ...);
     }(std::make_index_sequence<member_count>{});
