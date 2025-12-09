@@ -483,7 +483,7 @@ template<typename T, std::size_t FuncIndex, std::size_t... Is>
 template<typename T, std::size_t Index>
 void v8_method(const ::v8::FunctionCallbackInfo<::v8::Value>& args) {
     ::v8::Isolate* isolate = args.GetIsolate();
-    ::v8::Local<::v8::Object> self = args.Holder();
+    ::v8::Local<::v8::Object> self = args.This();
 
     V8Wrapper<T>* wrapper = static_cast<V8Wrapper<T>*>(
         self->GetAlignedPointerFromInternalField(kWrapperFieldIndex)
@@ -786,10 +786,13 @@ template<Bindable T>
                 static_cast<int>(name_sv.size())
             ).ToLocalChecked();
 
-            tpl->InstanceTemplate()->SetAccessor(
-                prop_name,
-                v8_getter<T, Is>,
-                v8_setter<T, Is>
+            tpl->InstanceTemplate()->SetNativeDataProperty(
+                prop_name,                 // v8::Local<v8::Name> or v8::Local<v8::String>
+                v8_getter<T, Is>,          // v8::AccessorNameGetterCallback
+                v8_setter<T, Is>,          // v8::AccessorNameSetterCallback
+                v8::Local<v8::Value>(),    // Data: Optional value to pass to accessors
+                v8::AccessControl::DEFAULT,
+                v8::PropertyAttribute::None // Property flags (e.g., ReadOnly, DontEnum)
             );
         }(), ...);
     }(std::make_index_sequence<member_count>{});
