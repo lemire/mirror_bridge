@@ -331,6 +331,32 @@ bool from_v8(::v8::Isolate* isolate, ::v8::Local<::v8::Value> value, T& out) {
     return true;
 }
 
+template<typename T>
+std::enable_if_t<
+    Bindable<T> && !StringLike<T> && !Container<T> && !Arithmetic<T> && !SmartPointer<T>,
+    bool
+>
+from_v8(::v8::Isolate* isolate, ::v8::Local<::v8::Value> value, T& out) {
+    using CleanT = std::remove_cvref_t<T>;
+
+    // Try to unwrap if it's a bound object
+    if (value->IsObject()) {
+        ::v8::Local<::v8::Object> obj = value.As<::v8::Object>();
+        if (obj->InternalFieldCount() >= kInternalFieldCount) {
+            V8Wrapper<CleanT>* wrapper = static_cast<V8Wrapper<CleanT>*>(
+                obj->GetAlignedPointerFromInternalField(kWrapperFieldIndex)
+            );
+            if (wrapper && wrapper->cpp_object) {
+                out = *wrapper->cpp_object;
+                return true;
+            }
+        }
+    }
+
+    // Fall back to object conversion
+    return V8ConversionHelper<T>::from_v8_impl(isolate, value, out);
+}
+
 // ============================================================================
 // Type Registry for V8 Class Templates
 // ============================================================================
@@ -706,32 +732,6 @@ to_v8(::v8::Isolate* isolate, const T& obj) {
     return V8ConversionHelper<T>::to_v8_impl(isolate, obj);
 }
 
-template<typename T>
-std::enable_if_t<
-    Bindable<T> && !StringLike<T> && !Container<T> && !Arithmetic<T> && !SmartPointer<T>,
-    bool
->
-from_v8(::v8::Isolate* isolate, ::v8::Local<::v8::Value> value, T& out) {
-    using CleanT = std::remove_cvref_t<T>;
-
-    // Try to unwrap if it's a bound object
-    if (value->IsObject()) {
-        ::v8::Local<::v8::Object> obj = value.As<::v8::Object>();
-        if (obj->InternalFieldCount() >= kInternalFieldCount) {
-            V8Wrapper<CleanT>* wrapper = static_cast<V8Wrapper<CleanT>*>(
-                obj->GetAlignedPointerFromInternalField(kWrapperFieldIndex)
-            );
-            if (wrapper && wrapper->cpp_object) {
-                out = *wrapper->cpp_object;
-                return true;
-            }
-        }
-    }
-
-    // Fall back to object conversion
-    return V8ConversionHelper<T>::from_v8_impl(isolate, value, out);
-}
-
 // ============================================================================
 // Class Binding Function
 // ============================================================================
@@ -791,8 +791,8 @@ template<Bindable T>
                 v8_getter<T, Is>,          // v8::AccessorNameGetterCallback
                 v8_setter<T, Is>,          // v8::AccessorNameSetterCallback
                 v8::Local<v8::Value>(),    // Data: Optional value to pass to accessors
-                v8::AccessControl::DEFAULT,
-                v8::PropertyAttribute::None // Property flags (e.g., ReadOnly, DontEnum)
+                v8::PropertyAttribute::None, // Property flags (e.g., ReadOnly, DontEnum)
+                v8::AccessControl::DEFAULT  // Access control settings
             );
         }(), ...);
     }(std::make_index_sequence<member_count>{});
