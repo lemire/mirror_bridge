@@ -97,7 +97,7 @@ while IFS= read -r -d '' binding_file; do
     echo "$binding_file"
 
     # Determine binding type and set appropriate flags
-    if [[ "$binding_file" == */js/* ]] || [[ "$binding_file" == *_js.cpp ]]; then
+    if [[ "$binding_dir" == */v8/* ]] || [[ "$binding_file" == */js/* ]] || [[ "$binding_file" == *_js.cpp ]]; then
         # JavaScript binding
         # Only add _js suffix if not already present
         if [[ "$module_name" == *_js ]]; then
