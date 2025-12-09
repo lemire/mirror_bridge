@@ -1,17 +1,18 @@
 FROM archlinux:base-20251019.0.436919
 
 # Install essential build tools, Python, Node.js, Lua, and V8 development files
-RUN pacman -Syu --noconfirm base-devel cmake ninja git python python-pip nodejs npm lua wget ca-certificates v8
+RUN pacman -Syu --noconfirm base-devel sudo ninja vim cmake ninja git python python-pip nodejs npm lua wget ca-certificates
 
 # Install Node.js native addon tools
 RUN npm install -g node-gyp node-addon-api
 
 # Install Jupyter for interactive notebooks
-RUN pip install --no-cache-dir jupyter notebook ipython
+RUN pip install --no-cache-dir --break-system-packages jupyter notebook ipython
 
 # Build and install clang-p2996 with reflection support AND libcxx
 # This branch implements the C++26 reflection proposal (P2996)
 WORKDIR /opt
+
 RUN git clone --depth 1 --branch p2996 https://github.com/bloomberg/clang-p2996.git
 
 # Build clang first
@@ -48,7 +49,7 @@ RUN rm -rf /opt/clang-p2996
 # Configure library paths
 RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/libc++.conf && ldconfig
 
-# Set LD_LIBRARY_PATH
+# Set LD_LIBRARY_PATH, this will issue a warning.
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
 # Verify the <meta> header is installed
