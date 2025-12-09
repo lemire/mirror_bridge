@@ -94,6 +94,8 @@ while IFS= read -r -d '' binding_file; do
     # Get the directory of the binding file for proper includes
     binding_dir=$(dirname "$binding_file")
 
+    echo "$binding_file"
+
     # Determine binding type and set appropriate flags
     if [[ "$binding_file" == */js/* ]] || [[ "$binding_file" == *_js.cpp ]]; then
         # JavaScript binding
