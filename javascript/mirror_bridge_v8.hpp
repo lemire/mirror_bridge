@@ -331,6 +331,9 @@ bool from_v8(::v8::Isolate* isolate, ::v8::Local<::v8::Value> value, T& out) {
     return true;
 }
 
+constexpr int kWrapperFieldIndex = 0;
+constexpr int kInternalFieldCount = 1;
+
 template<typename T>
 std::enable_if_t<
     Bindable<T> && !StringLike<T> && !Container<T> && !Arithmetic<T> && !SmartPointer<T>,
@@ -354,7 +357,7 @@ from_v8(::v8::Isolate* isolate, ::v8::Local<::v8::Value> value, T& out) {
     }
 
     // Fall back to object conversion
-    return V8ConversionHelper<T>::from_v8_impl(isolate, value, out);
+    return false;
 }
 
 // ============================================================================
@@ -397,9 +400,6 @@ void weak_callback(const ::v8::WeakCallbackInfo<V8Wrapper<T>>& data) {
 // We use index 0 to store the V8Wrapper pointer.
 //
 // ============================================================================
-
-constexpr int kWrapperFieldIndex = 0;
-constexpr int kInternalFieldCount = 1;
 
 // ============================================================================
 // Property Accessor (Getter)
